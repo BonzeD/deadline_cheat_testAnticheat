@@ -3,6 +3,7 @@ return function(ctx)
 local Players, localPlayer, settings, UserInputService = ctx.Players, ctx.localPlayer, ctx.settings, ctx.UserInputService
 local connections, Aim, ESP, Experiments = ctx.connections, ctx.Aim, ctx.ESP, ctx.Experiments
 local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
+local Movement = ctx.Movement
 local aimActive = false
 local refreshUI = function() end
 local statusText = "Ready • Right Shift opens or hides the menu."
@@ -17,6 +18,8 @@ local function toggleSilentAim() Aim.toggleSilent() end
 local function toggleWallCheck() Aim.toggleWall() end
 local function toggleNoclip() Experiments.toggleNoclip() end
 local function toggleWatchers() Experiments.toggleWatchers() end
+local function toggleSpeed() Movement.toggleSpeed() end
+local function toggleAirJump() Movement.toggleJump() end
 -- Self-contained UI. Right Shift is reserved as a recovery shortcut.
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local gui = Instance.new("ScreenGui")
@@ -136,6 +139,7 @@ local function choice(parent, name, description, key, options)
         local index = table.find(options, settings[key]) or 0
         settings[key] = options[index % #options + 1]
         Aim.reset()
+        if key == "MovementMode" then Movement.modeChanged() end
         if key == "AimMode" then aimActive = false end
         refreshUI()
     end)
@@ -174,7 +178,8 @@ end
 local function flip(key) settings[key] = not settings[key]; Aim.reset() end
 local binds = {Menu = Enum.KeyCode.RightShift, Trigger = Enum.UserInputType.MouseButton2}
 local actions = {ESP = toggleESP, Aimbot = toggleAim, Noclip = toggleNoclip,
-    Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck}
+    Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck,
+    Speed = toggleSpeed, AirJump = toggleAirJump}
 local capture = nil
 local function bindName(key)
     return binds[key] and binds[key].Name or "Unbound"
@@ -252,11 +257,19 @@ slider(espStylePage, "Label size", "Text size in pixels", "ESPTextSize", 10, 24,
 slider(espStylePage, "Overlay transparency", "Box / labels / tracers", "ESPOverlayTransparency", 0, 0.9, 0.05, "%.2f")
 updateTeamChecker()
 
+toggle(visualPage, "Speed test", "Client movement experiment", Movement.isSpeed, toggleSpeed)
+choice(visualPage, "Speed mode", "WalkSpeed / CFrame / Velocity", "MovementMode", {"WalkSpeed", "CFrame", "Velocity"})
+slider(visualPage, "Speed amount", "CFrame adds; others set", "MovementSpeed", 0, 150, 1, "%.0f studs/s")
+toggle(visualPage, "Air jump", "Press jump while in air", Movement.isJump, toggleAirJump)
+choice(visualPage, "Air jump mode", "State or vertical velocity", "AirJumpMode", {"State", "Velocity"})
+slider(visualPage, "Jump velocity", "Only in Velocity mode", "AirJumpVelocity", 10, 150, 5, "%.0f studs/s")
 toggle(visualPage, "Noclip", "Local collision experiment", Experiments.isNoclip, toggleNoclip)
 toggle(visualPage, "Watcher test", "Needs allowlisted script names", Experiments.isWatcher, toggleWatchers)
 bindRow("Aim trigger", "Default RMB; Esc removes", "Trigger")
 bindRow("Toggle aimbot", "No key until assigned", "Aimbot")
 bindRow("Toggle ESP", "No key until assigned", "ESP")
+bindRow("Toggle speed", "No key until assigned", "Speed")
+bindRow("Toggle air jump", "No key until assigned", "AirJump")
 bindRow("Toggle noclip", "No key until assigned", "Noclip")
 bindRow("Toggle watcher", "No key until assigned", "Watcher")
 bindRow("Toggle silent aim", "No key until assigned", "Silent")
@@ -325,7 +338,7 @@ connections[#connections + 1] = UserInputService.WindowFocusReleased:Connect(fun
     aimActive = false; Aim.reset(); dragging = false
 end)
 connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
-    Experiments.respawn(); aimActive = false; Aim.reset()
+    Experiments.respawn(); Movement.respawn(); aimActive = false; Aim.reset()
     refreshUI()
 end)
 local function updateFOV(camera)

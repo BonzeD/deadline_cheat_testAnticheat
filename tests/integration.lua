@@ -49,9 +49,9 @@ player.CharacterAdded=event()
 function player:GetMouse() return {} end
 local playerService={LocalPlayer=player}
 function playerService:GetPlayers() return self.list or {player} end
-local input={InputBegan=event(),InputEnded=event(),InputChanged=event(),WindowFocusReleased=event()}
+local input={InputBegan=event(),InputEnded=event(),InputChanged=event(),WindowFocusReleased=event(),JumpRequest=event()}
 function input:GetFocusedTextBox() return nil end
-local run={Stepped=event()}
+local run={Stepped=event(),Heartbeat=event()}
 function run:BindToRenderStep(n,p,fn) self.render=fn end
 function run:UnbindFromRenderStep(n) self.render=nil end
 local services={Players=playerService,RunService=run,UserInputService=input}
@@ -133,10 +133,14 @@ end
 press(Enum.KeyCode.RightShift); assert(ctx.UI.isMenuVisible())
 local espBind=controlFor("Toggle ESP"); espBind.Activated:fire(); press(Enum.KeyCode.K); assert(espBind.Text=="K")
 local aimBind=controlFor("Toggle aimbot"); aimBind.Activated:fire(); press(Enum.KeyCode.K);assert(espBind.Text=="Unbound" and aimBind.Text=="K")
+local speedControl=controlFor("Speed mode");speedControl.Activated:fire();assert(settings.MovementMode=="CFrame")
+speedControl.Activated:fire();speedControl.Activated:fire();assert(settings.MovementMode=="WalkSpeed")
+local speedBind=controlFor("Toggle speed");speedBind.Activated:fire();press(Enum.KeyCode.L);assert(speedBind.Text=="L")
 local highlightControl=controlFor("Highlight style");local oldStyle=settings.ESPHighlight;highlightControl.Activated:fire();assert(settings.ESPHighlight~=oldStyle)
 local distControl=controlFor("ESP distance");distControl.InputBegan:fire({UserInputType=Enum.UserInputType.MouseButton1,Position={X=50}});assert(settings.ESPMaxDistance==1525)
 input.InputEnded:fire({UserInputType=Enum.UserInputType.MouseButton1})
 press(Enum.KeyCode.RightShift);assert(not ctx.UI.isMenuVisible())
+press(Enum.KeyCode.L);assert(ctx.Movement.isSpeed());press(Enum.KeyCode.L);assert(not ctx.Movement.isSpeed())
 local oldAim=settings.Aimbot;press(Enum.KeyCode.K);assert(settings.Aimbot~=oldAim)
 settings.Aimbot=true
 -- Verify modular targeting reacts to aim activation, and menu-open blocks camera movement.
@@ -145,6 +149,30 @@ local cframe = camera.CFrame; cframe.lerps=0
 function cframe:Lerp(target,alpha) self.lerps=self.lerps+1; assert(alpha>0 and alpha<=1); return self end
 ctx.Aim.step(1/60,true,false,false); assert(cframe.lerps>0)
 local previous=cframe.lerps;ctx.Aim.step(1/60,true,true,false);assert(cframe.lerps==previous)
+-- Test movement module and reversible state against mock Roblox objects.
+localPlayer.Character=character
+hum.Parent=character; hum.WalkSpeed=16; hum.MoveDirection=Vector3.new(1,0,0)
+function hum:ChangeState(state) self.lastState=state end
+anchor.CFrame=Vector3.new(0,0,0); anchor.AssemblyLinearVelocity=Vector3.new(2,3,4)
+assert(not ctx.Movement.isSpeed() and not ctx.Movement.isJump())
+ctx.Movement.toggleSpeed(); run.Heartbeat:fire(0.1); assert(hum.WalkSpeed==40)
+ctx.Movement.toggleSpeed(); assert(hum.WalkSpeed==16)
+ctx.Movement.toggleSpeed();run.Heartbeat:fire(0.1); hum.WalkSpeed=23
+ctx.Movement.toggleSpeed(); assert(hum.WalkSpeed==23) -- preserve a later game write
+hum.WalkSpeed=16;ctx.Movement.toggleSpeed();run.Heartbeat:fire(0.1)
+settings.MovementMode='CFrame';ctx.Movement.modeChanged();assert(hum.WalkSpeed==16)
+run.Heartbeat:fire(0.1);assert(math.abs(anchor.CFrame.X-4)<0.001)
+settings.MovementMode='Velocity';run.Heartbeat:fire(0.1);assert(anchor.AssemblyLinearVelocity.X==40 and anchor.AssemblyLinearVelocity.Y==3)
+ctx.Movement.toggleSpeed();assert(not ctx.Movement.isSpeed())
+ctx.Movement.toggleJump();input.JumpRequest:fire();assert(hum.lastState==Enum.HumanoidStateType.Jumping)
+ctx.Movement.toggleJump();ctx.Movement.toggleJump();settings.AirJumpMode='Velocity';input.JumpRequest:fire()
+assert(anchor.AssemblyLinearVelocity.X==40 and anchor.AssemblyLinearVelocity.Y==60)
+-- Open menu prevents jump; restore mode and verify respawn turns tests off.
+press(Enum.KeyCode.RightShift);hum.lastState=nil;settings.AirJumpMode='State';ctx.Movement.toggleJump();ctx.Movement.toggleJump()
+input.JumpRequest:fire();assert(hum.lastState==nil)
+press(Enum.KeyCode.RightShift);settings.MovementMode='WalkSpeed';ctx.Movement.toggleSpeed();run.Heartbeat:fire(0.1);assert(hum.WalkSpeed==40)
+localPlayer.CharacterAdded:fire();assert(not ctx.Movement.isSpeed() and not ctx.Movement.isJump() and hum.WalkSpeed==16)
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
@@ -152,4 +180,4 @@ local good,err=pcall(assert(loadfile('./main.lua')))
 assert(not good and tostring(err):find('Cannot read') and _G.TestClientCleanup==originalCleanup)
 readfile=originalRead
 _G.TestClientCleanup(); assert(next(espEntries)==nil and ctx.espLayer.destroyed and ctx.gui.destroyed and run.render==nil)
-print('Modular runtime: loading, ESP, teams, aim bindings, cleanup and failed reload PASS')
+print('Mock runtime: movement modes, jump, restore, respawn, ESP, UI, aim and loader PASS')
