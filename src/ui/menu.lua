@@ -6,6 +6,7 @@ local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
 local Movement, Bypass, Trigger, Visuals, Mobility = ctx.Movement, ctx.Bypass, ctx.Trigger, ctx.Visuals, ctx.Mobility
 local Config, Cursor = ctx.Config, ctx.Cursor
 local aimActive, windowFocused = false, true
+local aimPressedAt = 0
 local refreshUI = function() end
 local statusText = "Ready • Right Shift opens or hides the menu."
 local function setStatus(message) statusText = message; refreshUI() end
@@ -445,7 +446,7 @@ refreshUI()
 local function showMenu(visible)
     panel.Visible = visible
     Cursor.setOpen(visible)
-    if visible then aimActive = false; Aim.reset() end
+    aimActive = false; Aim.reset()
     capture = nil
     refreshUI()
 end
@@ -487,7 +488,7 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
     if code == binds.Menu then showMenu(not panel.Visible); return end
     if panel.Visible then return end
     if code == binds.Trigger then
-        if settings.AimMode == "Toggle" then aimActive = not aimActive else aimActive = true end
+        if settings.AimMode == "Toggle" then aimActive = not aimActive else aimActive = true; aimPressedAt = os.clock() end
         if not aimActive then Aim.reset() end
         return
     end
@@ -504,6 +505,22 @@ connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
     Experiments.respawn(); Movement.respawn(); Bypass.respawn(); Trigger.respawn(); Mobility.respawn(); aimActive = false; Aim.reset()
     refreshUI()
 end)
+-- Some executors / focus changes can lose InputEnded. Poll a held binding as a
+-- fallback, but never alter Toggle mode or synthesize mouse input.
+local function currentAimActive()
+    if aimActive and settings.AimMode=="Hold" and binds.Trigger and os.clock()-aimPressedAt>0.15 then
+        local key=binds.Trigger
+        local isMouse=key==Enum.UserInputType.MouseButton1 or key==Enum.UserInputType.MouseButton2 or key==Enum.UserInputType.MouseButton3
+        local ok,down
+        if isMouse and type(UserInputService.IsMouseButtonPressed)=="function" then
+            ok,down=pcall(function() return UserInputService:IsMouseButtonPressed(key) end)
+        elseif not isMouse and type(UserInputService.IsKeyDown)=="function" then
+            ok,down=pcall(function() return UserInputService:IsKeyDown(key) end)
+        end
+        if ok and down==false then aimActive=false; Aim.reset() end
+    end
+    return aimActive
+end
 local function updateFOV(camera)
     fov.Visible = camera ~= nil and settings.Aimbot and settings.ShowFOV
     if camera then
@@ -514,7 +531,7 @@ end
 
 return {
     isMenuVisible = function() return panel.Visible end,
-    isAimActive = function() return aimActive end,
+    isAimActive = currentAimActive,
     isWindowFocused = function() return windowFocused end,
     updateFOV = updateFOV,
     updateTeamChecker = updateTeamChecker,
