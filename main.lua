@@ -12,6 +12,8 @@ local settings = {
     ESP = true,
     Aimbot = true,
     TeamCheck = true,
+    WallCheck = true,
+    SilentAim = false, -- experimental; executor and game dependent
     AimRadius = 180,
     Smoothness = 0.25,
     -- Exact LocalScript names that YOU have identified in your test place.
@@ -68,6 +70,18 @@ local function updateESP()
     end
 end
 
+-- Visibility check inspired by Exunys/Aimbot-V3 (CC0; credit: Exunys).
+-- If the query fails, do not treat the target as visible.
+local function hasLineOfSight(camera, targetPart)
+    if not settings.WallCheck then return true end
+    local ignored = {targetPart.Parent}
+    if localPlayer.Character then table.insert(ignored, localPlayer.Character) end
+    local ok, obstacles = pcall(function()
+        return camera:GetPartsObscuringTarget({targetPart.Position}, ignored)
+    end)
+    return ok and #obstacles == 0
+end
+
 local function findTarget(camera)
     local center = camera.ViewportSize / 2
     local bestHead, bestDistance = nil, settings.AimRadius
@@ -75,7 +89,7 @@ local function findTarget(camera)
         if isTarget(player) then
             local head = player.Character:FindFirstChild("Head")
             local point, visible = camera:WorldToViewportPoint(head.Position)
-            if visible and point.Z > 0 then
+            if visible and point.Z > 0 and hasLineOfSight(camera, head) then
                 local distance = (Vector2.new(point.X, point.Y) - center).Magnitude
                 if distance < bestDistance then bestDistance, bestHead = distance, head end
             end
@@ -149,6 +163,35 @@ local function disableNamedWatchers(character)
     return count > 0
 end
 
+-- Mouse.Hit / Mouse.Target interception is experimental, not an anti-cheat bypass guarantee.
+-- Once installed, the executor hook stays in place but becomes inert on disable/cleanup.
+-- Reuse a single hook on rerun; do not overwrite another script's later hook.
+local silentState = env.DeadlineSilentAimHook
+local function installSilentHook()
+    if silentState and silentState.installed then return true end
+    if type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" or type(checkcaller) ~= "function" then
+        return false
+    end
+    local candidate = {active = false, target = nil, mouse = localPlayer:GetMouse()}
+    local oldIndex
+    local ok, result = pcall(function()
+        oldIndex = hookmetamethod(game, "__index", newcclosure(function(object, key)
+            local target = candidate.target
+            if candidate.active and target and target.Parent and object == candidate.mouse and not checkcaller() then
+                if key == "Hit" then return target.CFrame end
+                if key == "Target" then return target end
+            end
+            return oldIndex(object, key)
+        end))
+        return oldIndex
+    end)
+    if not ok or type(result) ~= "function" then return false end
+    candidate.installed = true
+    silentState = candidate
+    env.DeadlineSilentAimHook = candidate
+    return true
+end
+
 -- Shared state for keyboard shortcuts and the menu.
 local refreshUI = function() end
 local statusText = "Ready. Right Shift opens or hides the menu."
@@ -164,6 +207,22 @@ end
 local function toggleAim()
     settings.Aimbot = not settings.Aimbot
     setStatus("Aim " .. (settings.Aimbot and "enabled" or "disabled"))
+end
+local function toggleSilentAim()
+    if settings.SilentAim then
+        settings.SilentAim = false
+        if silentState then silentState.active = false; silentState.target = nil end
+        setStatus("Silent aim off. Mouse hook remains inert until session ends.")
+    elseif installSilentHook() then
+        settings.SilentAim = true
+        setStatus("Silent aim on: Mouse.Hit/Target only; hold RMB. Not universal.")
+    else
+        setStatus("Silent aim unavailable: executor hook functions missing or failed.")
+    end
+end
+local function toggleWallCheck()
+    settings.WallCheck = not settings.WallCheck
+    setStatus("Aim wall check " .. (settings.WallCheck and "enabled" or "disabled"))
 end
 local function toggleNoclip()
     noclip = not noclip
@@ -218,8 +277,8 @@ end
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.fromOffset(370, 363)
-panel.Position = UDim2.new(0.5, -185, 0.5, -181)
+panel.Size = UDim2.fromOffset(370, 463)
+panel.Position = UDim2.new(0.5, -185, 0.5, -231)
 panel.BackgroundColor3 = Color3.fromRGB(20, 23, 32)
 panel.BorderSizePixel = 0
 panel.Parent = gui
@@ -247,7 +306,7 @@ divider.Parent = panel
 local rows = Instance.new("Frame")
 rows.BackgroundTransparency = 1
 rows.Position = UDim2.fromOffset(18, 78)
-rows.Size = UDim2.new(1, -36, 0, 192)
+rows.Size = UDim2.new(1, -36, 0, 292)
 rows.Parent = panel
 local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 8)
@@ -279,14 +338,16 @@ addToggle("ESP", "F6", "Highlight other players", 1, toggleESP)
 addToggle("Aimbot", "F7", "Hold right mouse button to aim", 2, toggleAim)
 addToggle("Noclip", "F8", "Local collision experiment", 3, toggleNoclip)
 addToggle("Watcher test", "F9", "Requires configured script names", 4, toggleWatchers)
+addToggle("Silent aim", "F10", "Mouse.Hit / Target only; hold RMB", 5, toggleSilentAim)
+addToggle("Wall check", "F11", "Aim at unobstructed targets only", 6, toggleWallCheck)
 
-local status = label(panel, "", UDim2.fromOffset(18, 281), UDim2.new(1, -36, 0, 42), 11, Color3.fromRGB(169, 180, 201))
+local status = label(panel, "", UDim2.fromOffset(18, 381), UDim2.new(1, -36, 0, 42), 11, Color3.fromRGB(169, 180, 201))
 status.TextWrapped = true
 status.TextYAlignment = Enum.TextYAlignment.Top
-local hint = label(panel, "Client tests only  •  Server protection is not bypassed", UDim2.fromOffset(18, 337), UDim2.new(1, -36, 0, 15), 10, Color3.fromRGB(122, 136, 159))
+local hint = label(panel, "Client tests only  •  Server protection is not bypassed", UDim2.fromOffset(18, 437), UDim2.new(1, -36, 0, 15), 10, Color3.fromRGB(122, 136, 159))
 
 refreshUI = function()
-    local states = {ESP = settings.ESP, Aimbot = settings.Aimbot, Noclip = noclip, ["Watcher test"] = watcherTest}
+    local states = {ESP = settings.ESP, Aimbot = settings.Aimbot, Noclip = noclip, ["Watcher test"] = watcherTest, ["Silent aim"] = settings.SilentAim, ["Wall check"] = settings.WallCheck}
     for name, badge in pairs(buttons) do
         badge.Text = states[name] and "ON" or "OFF"
         badge.TextColor3 = states[name] and Color3.fromRGB(106, 225, 177) or Color3.fromRGB(149, 159, 178)
@@ -330,19 +391,27 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
     if input.KeyCode == Enum.KeyCode.F6 then toggleESP()
     elseif input.KeyCode == Enum.KeyCode.F7 then toggleAim()
     elseif input.KeyCode == Enum.KeyCode.F8 then toggleNoclip()
-    elseif input.KeyCode == Enum.KeyCode.F9 then toggleWatchers() end
+    elseif input.KeyCode == Enum.KeyCode.F9 then toggleWatchers()
+    elseif input.KeyCode == Enum.KeyCode.F10 then toggleSilentAim()
+    elseif input.KeyCode == Enum.KeyCode.F11 then toggleWallCheck() end
 end)
 
 connections[#connections + 1] = RunService.Stepped:Connect(stepNoclip)
 RunService:BindToRenderStep("TestClientAimbot", Enum.RenderPriority.Camera.Value + 1, function()
+    if silentState then silentState.active = false; silentState.target = nil end
     if not running or not settings.Aimbot or gui.Enabled then return end
     if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
     local camera = workspace.CurrentCamera
     if not camera then return end
     local head = findTarget(camera)
     if head then
-        local current = camera.CFrame
-        camera.CFrame = current:Lerp(CFrame.lookAt(current.Position, head.Position), settings.Smoothness)
+        if settings.SilentAim and silentState then
+            silentState.target = head
+            silentState.active = true
+        else
+            local current = camera.CFrame
+            camera.CFrame = current:Lerp(CFrame.lookAt(current.Position, head.Position), settings.Smoothness)
+        end
     end
 end)
 
@@ -356,6 +425,7 @@ end)
 env.TestClientCleanup = function()
     running = false
     noclip = false
+    if silentState then silentState.active = false; silentState.target = nil end
     RunService:UnbindFromRenderStep("TestClientAimbot")
     for _, connection in ipairs(connections) do connection:Disconnect() end
     restoreCollision()
@@ -366,5 +436,5 @@ env.TestClientCleanup = function()
     print("Test client stopped")
 end
 
-print("Loaded: Right Shift menu | F6 ESP | F7 aim | F8 noclip | F9 watcher test | hold RMB to aim")
+print("Loaded: Right Shift menu | F6 ESP | F7 aim | F8 noclip | F9 watchers | F10 silent | F11 wall check | hold RMB")
 print("Stop: getgenv().TestClientCleanup()")
