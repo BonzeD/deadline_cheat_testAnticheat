@@ -46,22 +46,26 @@ local function decodeBind(value)
     end
     return nil,false
 end
-local function save(name, binds, bindingKeys)
+local function save(name, binds, bindingKeys, modes)
     assert(type(writefile)=="function", "writefile unavailable")
-    local output={version=1,settings={},binds={}}
+    local output={version=1,settings={},binds={},bindModes={}}
     for key,value in pairs(settings) do if validValue(key,value) then output.settings[key]=value end end
-    for _,key in ipairs(bindingKeys) do output.binds[key]=encodeBind(binds[key]) end
+    for _,key in ipairs(bindingKeys) do
+        output.binds[key]=encodeBind(binds[key])
+        if key~="Trigger" then output.bindModes[key]=(modes and modes[key]) or "Toggle" end
+    end
     local json=game:GetService("HttpService"):JSONEncode(output)
     writefile(path(name),json)
 end
-local function load(name, binds, bindingKeys)
+local function load(name, binds, bindingKeys, modes)
     assert(type(readfile)=="function", "readfile unavailable")
     local data=readfile(path(name))
     assert(type(data)=="string" and #data<=65536, "Invalid profile size")
     local payload=game:GetService("HttpService"):JSONDecode(data)
     assert(type(payload)=="table" and payload.version==1 and type(payload.settings)=="table" and type(payload.binds)=="table", "Invalid profile format")
     -- Validate the complete profile before making any changes.
-    local nextValues, nextBinds, used = {}, {}, {}
+    local nextValues, nextBinds, nextModes, used = {}, {}, {}, {}
+    assert(payload.bindModes==nil or type(payload.bindModes)=="table", "Invalid binding modes")
     for key,value in pairs(payload.settings) do
         assert(validValue(key,value), "Invalid setting: " .. tostring(key))
         nextValues[key]=value
@@ -72,9 +76,17 @@ local function load(name, binds, bindingKeys)
         local item,ok=decodeBind(value); assert(ok,"Invalid binding: " .. key)
         if item then assert(not used[item],"Duplicate binding: " .. key); used[item]=true end
         nextBinds[key]=item or false
+        if key~="Trigger" then
+            local mode=(payload.bindModes and payload.bindModes[key]) or "Toggle"
+            assert(mode=="Toggle" or mode=="Hold", "Invalid binding mode: " .. key)
+            nextModes[key]=mode
+        end
     end
     for key,value in pairs(nextValues) do settings[key]=value end
-    for _,key in ipairs(bindingKeys) do binds[key]=nextBinds[key] or nil end
+    for _,key in ipairs(bindingKeys) do
+        binds[key]=nextBinds[key] or nil
+        if modes and key~="Trigger" then modes[key]=nextModes[key] end
+    end
 end
 local function list()
     if type(listfiles)~="function" then return nil,"listfiles unavailable; enter a name manually" end

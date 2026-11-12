@@ -156,13 +156,13 @@ local visualPage = page("Visual", "◇  TOOLS")
 local extrasPage = page("Extras", "✦  EXTRAS")
 local bindPage = page("Bindings", "⌘  BINDS")
 local configPage = page("Configs", "▣  CONFIGS")
-local function card(parent, title, subtitle, height)
+local function card(parent, title, subtitle, height, fullWidth)
     order = order + 1
     local group = pageGroups[parent]
     assert(group and group.current, "Every page needs a section before controls")
     local frame = make("Frame", group.current, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, height or 52), BackgroundColor3 = C.panel, BorderSizePixel = 0})
-    local heading=text(frame, title, 12, UDim2.fromOffset(8, 6), UDim2.new(1, -145, 0, 18), C.text, Enum.Font.GothamSemibold)
-    local detail=text(frame, subtitle, 10, UDim2.fromOffset(8, 25), UDim2.new(1, -145, 0, 18), C.muted)
+    local heading=text(frame, title, 12, UDim2.fromOffset(8, 6), UDim2.new(1, fullWidth and -16 or -145, 0, 18), C.text, Enum.Font.GothamSemibold)
+    local detail=text(frame, subtitle, 10, UDim2.fromOffset(8, 25), UDim2.new(1, fullWidth and -16 or -145, 0, 18), C.muted)
     heading.TextTruncate=Enum.TextTruncate.AtEnd; detail.TextTruncate=Enum.TextTruncate.AtEnd
     return frame
 end
@@ -246,17 +246,45 @@ local actions = {ESP = toggleESP, Aimbot = toggleAim, Noclip = toggleNoclip,
     Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck,
     Speed = toggleSpeed, AirJump = toggleAirJump, Spoof = toggleSpoof, Signal = toggleSignal,
     TriggerBot = toggleTrigger, AutoJump = toggleAutoJump, Crosshair = toggleCrosshair, Bright = toggleBright, Fog = toggleFog, CameraFov = toggleCameraFov}
+local getters = {
+    ESP=function() return settings.ESP end, Aimbot=function() return settings.Aimbot end,
+    Noclip=Experiments.isNoclip, Watcher=Experiments.isWatcher,
+    Silent=function() return settings.SilentAim end, Wall=function() return settings.WallCheck end,
+    Speed=Movement.isSpeed, AirJump=Movement.isJump, Spoof=Bypass.isSpeedSpoof, Signal=Bypass.isSignal,
+    TriggerBot=Trigger.isEnabled, AutoJump=Mobility.isEnabled,
+    Crosshair=function() return settings.CrosshairEnabled end, Bright=function() return settings.FullbrightEnabled end,
+    Fog=function() return settings.NoFogEnabled end, CameraFov=function() return settings.CameraFOVEnabled end,
+}
+local bindModes={}
+for name in pairs(actions) do bindModes[name]="Toggle" end
+local bindingManager=ctx.makeBindings(UserInputService,actions,getters,bindModes)
+ctx.Bindings=bindingManager
 local function bindName(key)
     return binds[key] and binds[key].Name or "Unbound"
 end
 local function bindRow(name, description, key, parent)
-    local frame = card(parent or bindPage, name, description)
+    local frame = card(parent or bindPage, name, description, 82, true)
     local b = button(frame, "")
-    b.Size = UDim2.fromOffset(120, 30); b.Position = UDim2.new(1, -128, 0.5, -15)
-    table.insert(updaters, function() b.Text = capture == key and "Press key..." or bindName(key) end)
+    b.Size = UDim2.new(0.5,-10,0,28); b.Position = UDim2.new(0,6,1,-34)
+    local modeButton = button(frame, "")
+    modeButton.Name = "BindMode_" .. key
+    modeButton.Size = UDim2.new(0.5,-10,0,28); modeButton.Position = UDim2.new(0.5,4,1,-34)
+    table.insert(updaters, function()
+        b.Text = capture == key and "Press key..." or bindName(key)
+        modeButton.Text = "MODE: " .. (key=="Trigger" and settings.AimMode or bindModes[key])
+    end)
     connections[#connections + 1] = b.Activated:Connect(function()
         capture = key; aimActive = false
         setStatus("Press a key or mouse button. Escape clears; Right Shift is reserved.")
+    end)
+    connections[#connections + 1] = modeButton.Activated:Connect(function()
+        capture=nil;aimActive=false;Aim.reset()
+        if key=="Trigger" then
+            settings.AimMode=settings.AimMode=="Hold" and "Toggle" or "Hold"
+        else
+            bindingManager.setMode(key, bindModes[key]=="Hold" and "Toggle" or "Hold")
+        end
+        setStatus("Hold: active while pressed. Toggle: press to switch.")
     end)
 end
 -- Local declaration is before all handlers which change activation state.
@@ -420,15 +448,16 @@ local function configAction(name, description, label, action)
     connections[#connections+1]=b.Activated:Connect(action)
 end
 configAction("Save profile", "Overwrites the same name", "SAVE", function()
-    local ok,err=pcall(Config.save,configName.Text,binds,bindingKeys)
+    local ok,err=pcall(Config.save,configName.Text,binds,bindingKeys,bindModes)
     setStatus(ok and ("Saved profile: " .. configName.Text) or ("Save failed: " .. tostring(err)))
     if ok then refreshConfigList() end
 end)
 configAction("Load profile", "Applies settings and binds", "LOAD", function()
     local oldMode=settings.MovementMode
-    local ok,err=pcall(Config.load,configName.Text,binds,bindingKeys)
+    local ok,err=pcall(Config.load,configName.Text,binds,bindingKeys,bindModes)
     if ok then
         if oldMode~=settings.MovementMode then Movement.modeChanged() end
+        for name, mode in pairs(bindModes) do if mode=="Hold" then bindingManager.setMode(name,mode) end end
         Bypass.updateSpoofValue(); aimActive=false; Aim.reset(); ESP.update(); refreshUI()
     end
     setStatus(ok and ("Loaded profile: " .. configName.Text) or ("Load failed: " .. tostring(err)))
@@ -446,6 +475,7 @@ refreshUI()
 local function showMenu(visible)
     panel.Visible = visible
     Cursor.setOpen(visible)
+    if visible then bindingManager.releaseAll() end
     aimActive = false; Aim.reset()
     capture = nil
     refreshUI()
@@ -465,6 +495,7 @@ connections[#connections + 1] = UserInputService.InputEnded:Connect(function(inp
     if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     local code = input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType
     if settings.AimMode == "Hold" and code == binds.Trigger then aimActive = false; Aim.reset() end
+    bindingManager.inputEnded(code)
 end)
 connections[#connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
     if UserInputService:GetFocusedTextBox() then return end
@@ -494,14 +525,15 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
     end
     if processed then return end
     for name, action in pairs(actions) do
-        if binds[name] == code then action(); break end
+        if binds[name] == code then bindingManager.press(name,code); break end
     end
 end)
 connections[#connections + 1] = UserInputService.WindowFocusReleased:Connect(function()
-    windowFocused = false; aimActive = false; Aim.reset(); dragging = false
+    windowFocused = false; aimActive = false; Aim.reset(); dragging = false; bindingManager.releaseAll()
 end)
 connections[#connections + 1] = UserInputService.WindowFocused:Connect(function() windowFocused = true end)
 connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
+    bindingManager.releaseAll()
     Experiments.respawn(); Movement.respawn(); Bypass.respawn(); Trigger.respawn(); Mobility.respawn(); aimActive = false; Aim.reset()
     refreshUI()
 end)
@@ -534,7 +566,14 @@ return {
     isAimActive = currentAimActive,
     isWindowFocused = function() return windowFocused end,
     updateFOV = updateFOV,
+    updateHeld = function()
+        if panel.Visible or not windowFocused or UserInputService:GetFocusedTextBox() then
+            bindingManager.releaseAll()
+        else
+            bindingManager.step()
+        end
+    end,
     updateTeamChecker = updateTeamChecker,
-    cleanup = function() gui:Destroy() end,
+    cleanup = function() bindingManager.releaseAll(); gui:Destroy() end,
 }
 end

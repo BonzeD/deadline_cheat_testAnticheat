@@ -36,6 +36,7 @@ local makeMobility = loadModule("src/mobility/init.lua")
 local makeUI = loadModule("src/ui/menu.lua")
 local makeCursor = loadModule("src/ui/cursor.lua")
 local makeConfig = loadModule("src/config/init.lua")
+local makeBindings = loadModule("src/ui/bindings.lua")
 local settings = {}
 for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movementSettings, bypassSettings, triggerSettings, visualSettings, mobilitySettings}) do
     assert(type(defaults) == "table", "Invalid settings module")
@@ -44,9 +45,9 @@ for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movemen
         settings[key] = value
     end
 end
-assert(type(makeAim) == "function" and type(makeESP) == "function" and type(makeExperiments) == "function" and type(makeMovement) == "function" and type(makeBypass) == "function" and type(makeTrigger) == "function" and type(makeVisuals) == "function" and type(makeMobility) == "function" and type(makeUI) == "function" and type(makeCursor) == "function" and type(makeConfig) == "function", "Invalid module")
+assert(type(makeAim) == "function" and type(makeESP) == "function" and type(makeExperiments) == "function" and type(makeMovement) == "function" and type(makeBypass) == "function" and type(makeTrigger) == "function" and type(makeVisuals) == "function" and type(makeMobility) == "function" and type(makeUI) == "function" and type(makeCursor) == "function" and type(makeConfig) == "function" and type(makeBindings) == "function", "Invalid module")
 if type(env.TestClientCleanup) == "function" then pcall(env.TestClientCleanup) end
-local ctx = {env = env, settings = settings, connections = {}, running = true, setStatus = function() end}
+local ctx = {env = env, settings = settings, connections = {}, running = true, makeBindings = makeBindings, setStatus = function() end}
 ctx.Players = game:GetService("Players")
 ctx.RunService = game:GetService("RunService")
 ctx.UserInputService = game:GetService("UserInputService")
@@ -55,6 +56,7 @@ local function cleanup()
     ctx.running = false
     pcall(function() ctx.RunService:UnbindFromRenderStep("TestClientAimbot") end)
     for _, connection in ipairs(ctx.connections) do pcall(function() connection:Disconnect() end) end
+    if ctx.Bindings then pcall(ctx.Bindings.releaseAll) end
     if ctx.Aim then pcall(ctx.Aim.cleanup) end
     if ctx.Experiments then pcall(ctx.Experiments.cleanup) end
     if ctx.Movement then pcall(ctx.Movement.cleanup) end
@@ -85,6 +87,7 @@ local ok, message = pcall(function()
     ctx.connections[#ctx.connections + 1] = ctx.RunService.Heartbeat:Connect(function() ctx.Mobility.step(os.clock()) end)
     ctx.RunService:BindToRenderStep("TestClientAimbot", Enum.RenderPriority.Camera.Value + 1, function(dt)
         ctx.Cursor.step()
+        ctx.UI.updateHeld()
         ctx.Visuals.step(dt, workspace.CurrentCamera)
         ctx.UI.updateFOV(workspace.CurrentCamera)
         ctx.Aim.step(dt, ctx.UI.isAimActive(), ctx.UI.isMenuVisible(), ctx.UserInputService:GetFocusedTextBox() ~= nil)
