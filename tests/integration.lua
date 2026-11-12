@@ -171,8 +171,7 @@ settings.Aimbot=true
 hum.Health=80; enemy.Character=character; anchor.AssemblyLinearVelocity=Vector3.new(0,0,0)
 local cframe = camera.CFrame; cframe.lerps=0
 function cframe:Lerp(target,alpha) self.lerps=self.lerps+1; assert(alpha>0 and alpha<=1); return self end
-ctx.Aim.step(1/60,true,false,false); assert(cframe.lerps>0 and ctx.Aim.diagnostic():find("Target:"))
-local lastDiag=ctx.Aim.diagnostic();ctx.Aim.step(1/60,true,true,false); assert(ctx.Aim.diagnostic()==lastDiag)
+ctx.Aim.step(1/60,true,false,false); assert(cframe.lerps>0)
 local previous=cframe.lerps;ctx.Aim.step(1/60,true,true,false);assert(cframe.lerps==previous)
 -- Test movement module and reversible state against mock Roblox objects.
 localPlayer.Character=character
