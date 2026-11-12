@@ -3,8 +3,8 @@ return function(ctx)
 local Players, localPlayer, settings, UserInputService = ctx.Players, ctx.localPlayer, ctx.settings, ctx.UserInputService
 local connections, Aim, ESP, Experiments = ctx.connections, ctx.Aim, ctx.ESP, ctx.Experiments
 local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
-local Movement, Bypass = ctx.Movement, ctx.Bypass
-local aimActive = false
+local Movement, Bypass, Trigger, Visuals, Mobility = ctx.Movement, ctx.Bypass, ctx.Trigger, ctx.Visuals, ctx.Mobility
+local aimActive, windowFocused = false, true
 local refreshUI = function() end
 local statusText = "Ready • Right Shift opens or hides the menu."
 local function setStatus(message) statusText = message; refreshUI() end
@@ -22,6 +22,12 @@ local function toggleSpeed() Movement.toggleSpeed() end
 local function toggleAirJump() Movement.toggleJump() end
 local function toggleSpoof() Bypass.toggleSpeedSpoof() end
 local function toggleSignal() Bypass.toggleSignal() end
+local function toggleTrigger() Trigger.toggle() end
+local function toggleAutoJump() Mobility.toggle() end
+local function toggleCrosshair() Visuals.toggle("CrosshairEnabled", "Crosshair") end
+local function toggleBright() Visuals.toggle("FullbrightEnabled", "Fullbright") end
+local function toggleFog() Visuals.toggle("NoFogEnabled", "No fog") end
+local function toggleCameraFov() Visuals.toggle("CameraFOVEnabled", "Camera FOV") end
 -- Self-contained UI. Right Shift is reserved as a recovery shortcut.
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local gui = Instance.new("ScreenGui")
@@ -80,7 +86,7 @@ local close = button(header, "—")
 close.Size = UDim2.fromOffset(38, 32); close.Position = UDim2.new(1, -55, 0, 19)
 local sidebar = make("Frame", panel, {Position = UDim2.fromOffset(16, 78), Size = UDim2.new(0, 126, 1, -132), BackgroundColor3 = C.panel, BorderSizePixel = 0})
 round(sidebar, 10)
-local nav = make("Frame", sidebar, {BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 1, -20)})
+local nav = make("ScrollingFrame", sidebar, {BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 1, -20), BorderSizePixel = 0, ScrollBarThickness = 2, CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y})
 make("UIListLayout", nav, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
 local pages = make("Frame", panel, {BackgroundTransparency = 1, Position = UDim2.fromOffset(154, 78), Size = UDim2.new(1, -170, 1, -132)})
 local footer = text(panel, "", 10, UDim2.new(0, 20, 1, -43), UDim2.new(1, -40, 0, 31), C.muted)
@@ -110,6 +116,7 @@ local aimPage = page("Aim", "◉  AIM")
 local espPage = page("ESP", "◈  ESP")
 local espStylePage = page("ESPStyle", "◌  ESP STYLE")
 local visualPage = page("Visual", "◇  TOOLS")
+local extrasPage = page("Extras", "✦  EXTRAS")
 local bindPage = page("Bindings", "⌘  BINDS")
 local function card(parent, title, subtitle, height)
     order = order + 1
@@ -182,7 +189,8 @@ local function flip(key) settings[key] = not settings[key]; Aim.reset() end
 local binds = {Menu = Enum.KeyCode.RightShift, Trigger = Enum.UserInputType.MouseButton2}
 local actions = {ESP = toggleESP, Aimbot = toggleAim, Noclip = toggleNoclip,
     Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck,
-    Speed = toggleSpeed, AirJump = toggleAirJump, Spoof = toggleSpoof, Signal = toggleSignal}
+    Speed = toggleSpeed, AirJump = toggleAirJump, Spoof = toggleSpoof, Signal = toggleSignal,
+    TriggerBot = toggleTrigger, AutoJump = toggleAutoJump, Crosshair = toggleCrosshair, Bright = toggleBright, Fog = toggleFog, CameraFov = toggleCameraFov}
 local capture = nil
 local function bindName(key)
     return binds[key] and binds[key].Name or "Unbound"
@@ -205,6 +213,8 @@ toggle(aimPage, "Wall check", "Require a clear line of sight", function() return
 toggle(aimPage, "Sticky target", "Keep target while still eligible", function() return settings.StickyTarget end, function() flip("StickyTarget") end)
 toggle(aimPage, "FOV circle", "Show targeting radius", function() return settings.ShowFOV end, function() flip("ShowFOV") end)
 choice(aimPage, "Aim part", "Target character body part", "AimPart", {"Head", "HumanoidRootPart", "UpperTorso", "Torso"})
+choice(aimPage, "Target priority", "Screen / distance / health", "AimPriority", {"Screen", "Distance", "Health"})
+slider(aimPage, "Aim height offset", "Vertical offset in studs", "AimVerticalOffset", -5, 5, 0.1, "%.1f studs")
 choice(aimPage, "Activation", "Hold or press to toggle", "AimMode", {"Hold", "Toggle"})
 slider(aimPage, "FOV radius", "Screen pixels from centre", "AimRadius", 30, 600, 5, "%.0f px")
 slider(aimPage, "Response", "Lower is smoother; 1 is instant", "Smoothness", 0.01, 1, 0.01, "%.2f")
@@ -271,7 +281,36 @@ toggle(visualPage, "Watcher test", "Needs allowlisted script names", Experiments
 toggle(visualPage, "Speed read test", "Configured test PlaceId only", Bypass.isSpeedSpoof, toggleSpoof)
 slider(visualPage, "Reported WalkSpeed", "Client read test value", "BypassSpoofSpeed", 0, 100, 1, "%.0f")
 toggle(visualPage, "Signal drop test", "Exact test event and flag only", Bypass.isSignal, toggleSignal)
+toggle(extrasPage, "Auto jump", "Repeated grounded jumps", Mobility.isEnabled, toggleAutoJump)
+toggle(extrasPage, "Jump moving only", "Do not jump while stationary", function() return settings.AutoJumpMovingOnly end, function() settings.AutoJumpMovingOnly = not settings.AutoJumpMovingOnly end)
+slider(extrasPage, "Auto jump interval", "Minimum time between jumps", "AutoJumpInterval", 0.1, 1, 0.05, "%.2f s")
+toggle(extrasPage, "Trigger bot", "Auto-click over a player", Trigger.isEnabled, toggleTrigger)
+choice(extrasPage, "Trigger activation", "Aim trigger or always", "TriggerActivation", {"Aim", "Always"})
+toggle(extrasPage, "Trigger team check", "Exclude same Roblox Team", function() return settings.TriggerTeamCheck end, function() settings.TriggerTeamCheck = not settings.TriggerTeamCheck end)
+slider(extrasPage, "Trigger delay", "Time on target before clicking", "TriggerDelay", 0, 1, 0.05, "%.2f s")
+slider(extrasPage, "Click interval", "Minimum time between clicks", "TriggerInterval", 0.05, 1, 0.05, "%.2f s")
+slider(extrasPage, "Trigger distance", "Maximum target distance", "TriggerDistance", 25, 3000, 25, "%.0f studs")
+toggle(extrasPage, "Crosshair", "Screen-centred overlay", function() return settings.CrosshairEnabled end, toggleCrosshair)
+choice(extrasPage, "Crosshair shape", "Cross, dot, or both", "CrosshairShape", {"Cross", "Dot", "Cross+Dot"})
+slider(extrasPage, "Crosshair length", "Arm length", "CrosshairLength", 3, 40, 1, "%.0f px")
+slider(extrasPage, "Crosshair gap", "Centre spacing", "CrosshairGap", 0, 30, 1, "%.0f px")
+slider(extrasPage, "Crosshair thickness", "Arm thickness", "CrosshairThickness", 1, 8, 1, "%.0f px")
+slider(extrasPage, "Crosshair hue", "Color hue", "CrosshairHue", 0, 360, 5, "%.0f°")
+slider(extrasPage, "Crosshair transparency", "0 opaque, 1 invisible", "CrosshairTransparency", 0, 1, 0.05, "%.2f")
+toggle(extrasPage, "Crosshair spin", "Rotate overlay", function() return settings.CrosshairSpin end, function() settings.CrosshairSpin = not settings.CrosshairSpin end)
+slider(extrasPage, "Spin speed", "Degrees per second", "CrosshairSpinSpeed", 0, 360, 10, "%.0f°/s")
+toggle(extrasPage, "Fullbright", "Local lighting only", function() return settings.FullbrightEnabled end, toggleBright)
+slider(extrasPage, "Brightness", "Local lighting override", "FullbrightLevel", 0, 10, 0.5, "%.1f")
+toggle(extrasPage, "No fog", "Local FogEnd override", function() return settings.NoFogEnabled end, toggleFog)
+toggle(extrasPage, "Camera FOV", "Local field-of-view override", function() return settings.CameraFOVEnabled end, toggleCameraFov)
+slider(extrasPage, "Camera FOV amount", "May conflict with weapon zoom", "CameraFOVAmount", 30, 120, 1, "%.0f°")
 bindRow("Aim trigger", "Default RMB; Esc removes", "Trigger")
+bindRow("Toggle auto jump", "No key until assigned", "AutoJump")
+bindRow("Toggle trigger bot", "No key until assigned", "TriggerBot")
+bindRow("Toggle crosshair", "No key until assigned", "Crosshair")
+bindRow("Toggle fullbright", "No key until assigned", "Bright")
+bindRow("Toggle no fog", "No key until assigned", "Fog")
+bindRow("Toggle camera FOV", "No key until assigned", "CameraFov")
 bindRow("Toggle aimbot", "No key until assigned", "Aimbot")
 bindRow("Toggle ESP", "No key until assigned", "ESP")
 bindRow("Toggle speed", "No key until assigned", "Speed")
@@ -343,10 +382,11 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
     end
 end)
 connections[#connections + 1] = UserInputService.WindowFocusReleased:Connect(function()
-    aimActive = false; Aim.reset(); dragging = false
+    windowFocused = false; aimActive = false; Aim.reset(); dragging = false
 end)
+connections[#connections + 1] = UserInputService.WindowFocused:Connect(function() windowFocused = true end)
 connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
-    Experiments.respawn(); Movement.respawn(); Bypass.respawn(); aimActive = false; Aim.reset()
+    Experiments.respawn(); Movement.respawn(); Bypass.respawn(); Trigger.respawn(); Mobility.respawn(); aimActive = false; Aim.reset()
     refreshUI()
 end)
 local function updateFOV(camera)
@@ -360,6 +400,7 @@ end
 return {
     isMenuVisible = function() return panel.Visible end,
     isAimActive = function() return aimActive end,
+    isWindowFocused = function() return windowFocused end,
     updateFOV = updateFOV,
     updateTeamChecker = updateTeamChecker,
     cleanup = function() gui:Destroy() end,

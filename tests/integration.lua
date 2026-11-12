@@ -46,15 +46,17 @@ local guiParent=obj('PlayerGui')
 local player={Team=nil,Character=nil}
 function player:WaitForChild() return guiParent end
 player.CharacterAdded=event()
-function player:GetMouse() return {} end
+local testMouse={}
+function player:GetMouse() return testMouse end
 local playerService={LocalPlayer=player}
 function playerService:GetPlayers() return self.list or {player} end
-local input={InputBegan=event(),InputEnded=event(),InputChanged=event(),WindowFocusReleased=event(),JumpRequest=event()}
+local input={InputBegan=event(),InputEnded=event(),InputChanged=event(),WindowFocusReleased=event(),WindowFocused=event(),JumpRequest=event()}
 function input:GetFocusedTextBox() return nil end
 local run={Stepped=event(),Heartbeat=event()}
 function run:BindToRenderStep(n,p,fn) self.render=fn end
 function run:UnbindFromRenderStep(n) self.render=nil end
-local services={Players=playerService,RunService=run,UserInputService=input}
+local lighting={Ambient=Color3.fromRGB(10,10,10),OutdoorAmbient=Color3.fromRGB(20,20,20),Brightness=1,FogEnd=100}
+local services={Players=playerService,RunService=run,UserInputService=input,Lighting=lighting}
 game={}; function game:GetService(name) return assert(services[name],name) end
 workspace={CurrentCamera=nil}; task={spawn=function(fn) end,wait=function() end}
 
@@ -121,7 +123,7 @@ local value=settings.ESP; press(Enum.KeyCode.F6);assert(settings.ESP==value)
 local mouse=press(Enum.UserInputType.MouseButton2,true);assert(ctx.UI.isAimActive())
 input.InputEnded:fire(mouse);assert(not ctx.UI.isAimActive())
 settings.AimMode='Toggle';press(Enum.UserInputType.MouseButton2);assert(ctx.UI.isAimActive())
-input.WindowFocusReleased:fire();assert(not ctx.UI.isAimActive())
+input.WindowFocusReleased:fire();assert(not ctx.UI.isAimActive() and not ctx.UI.isWindowFocused());input.WindowFocused:fire();assert(ctx.UI.isWindowFocused())
 -- Exercise actual menu control callbacks, not only underlying settings.
 local function controlFor(title)
     local card
@@ -184,6 +186,22 @@ input.InputEnded:fire({UserInputType=Enum.UserInputType.MouseButton1})
 local spoofBind=controlFor("Toggle speed read test"); spoofBind.Activated:fire(); press(Enum.KeyCode.J);assert(spoofBind.Text=="J")
 press(Enum.KeyCode.RightShift);press(Enum.KeyCode.J); assert(not ctx.Bypass.isSpeedSpoof())
 
+-- Additional UI and visual lifecycle, exercised on mocks.
+press(Enum.KeyCode.RightShift);assert(ctx.UI.isMenuVisible())
+controlFor("Crosshair").Activated:fire();assert(settings.CrosshairEnabled)
+controlFor("Crosshair shape").Activated:fire();assert(settings.CrosshairShape=="Dot")
+controlFor("Fullbright").Activated:fire();assert(settings.FullbrightEnabled)
+controlFor("No fog").Activated:fire();assert(settings.NoFogEnabled)
+controlFor("Camera FOV").Activated:fire();assert(settings.CameraFOVEnabled)
+local crossBind=controlFor("Toggle crosshair");crossBind.Activated:fire();press(Enum.KeyCode.H);assert(crossBind.Text=="H")
+press(Enum.KeyCode.RightShift);press(Enum.KeyCode.H);assert(not settings.CrosshairEnabled)
+press(Enum.KeyCode.H);assert(settings.CrosshairEnabled)
+camera.FieldOfView=70;ctx.Visuals.step(0.016,camera)
+assert(lighting.Brightness==4 and lighting.FogEnd==1000000 and camera.FieldOfView==80)
+settings.FullbrightEnabled=false;settings.NoFogEnabled=false;settings.CameraFOVEnabled=false
+ctx.Visuals.step(0.016,camera);assert(lighting.Brightness==1 and lighting.FogEnd==100 and camera.FieldOfView==70)
+assert(not ctx.Trigger.isEnabled());ctx.Trigger.toggle();assert(not ctx.Trigger.isEnabled()) -- no mouse API
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
@@ -191,4 +209,4 @@ local good,err=pcall(assert(loadfile('./main.lua')))
 assert(not good and tostring(err):find('Cannot read') and _G.TestClientCleanup==originalCleanup)
 readfile=originalRead
 _G.TestClientCleanup(); assert(next(espEntries)==nil and ctx.espLayer.destroyed and ctx.gui.destroyed and run.render==nil)
-print('Mock runtime: movement, ESP, UI, bypass controls, aim and loader PASS')
+print('Mock runtime: movement, ESP, UI, extras, bypass controls, aim and loader PASS')

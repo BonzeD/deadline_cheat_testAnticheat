@@ -30,12 +30,14 @@ local function candidateFor(camera, player)
     if not isTarget(player) then return nil end
     local part = player.Character:FindFirstChild(settings.AimPart)
     if not part or not part:IsA("BasePart") then return nil end
-    if (part.Position - camera.CFrame.Position).Magnitude > settings.MaxDistance then return nil end
+    local worldDistance = (part.Position - camera.CFrame.Position).Magnitude
+    if worldDistance > settings.MaxDistance then return nil end
     local point, visible = camera:WorldToViewportPoint(part.Position)
     if not visible or point.Z <= 0 or not hasLineOfSight(camera, part) then return nil end
     local distance = (Vector2.new(point.X, point.Y) - camera.ViewportSize / 2).Magnitude
     if distance > settings.AimRadius then return nil end
-    return part, distance
+    local human = player.Character:FindFirstChildOfClass("Humanoid")
+    return part, distance, worldDistance, human.Health
 end
 local function findTarget(camera)
     if settings.StickyTarget and lockedPlayer then
@@ -43,11 +45,12 @@ local function findTarget(camera)
         if part then return part end
     end
     lockedPlayer = nil
-    local bestPart, bestDistance = nil, settings.AimRadius + 1
+    local bestPart, bestScore = nil, math.huge
     for _, player in ipairs(Players:GetPlayers()) do
-        local part, distance = candidateFor(camera, player)
-        if part and distance < bestDistance then
-            bestPart, bestDistance, lockedPlayer = part, distance, player
+        local part, distance, worldDistance, health = candidateFor(camera, player)
+        local score = settings.AimPriority == "Distance" and worldDistance or settings.AimPriority == "Health" and health or distance
+        if part and score < bestScore then
+            bestPart, bestScore, lockedPlayer = part, score, player
         end
     end
     return bestPart
@@ -117,7 +120,7 @@ local function step(dt, aimActive, menuVisible, focused)
     end
     local part = findTarget(camera)
     if part then
-        local position = part.Position + part.AssemblyLinearVelocity * settings.Prediction
+        local position = part.Position + part.AssemblyLinearVelocity * settings.Prediction + Vector3.new(0, settings.AimVerticalOffset, 0)
         if settings.SilentAim and silentState then
             silentState.target, silentState.position, silentState.active = part, position, true
         else
