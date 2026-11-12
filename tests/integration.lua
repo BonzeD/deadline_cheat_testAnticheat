@@ -109,19 +109,32 @@ camera.shiftX=40; anchor.Position=Vector3.new(2,0,30)
 ctx.ESP.render(camera, 0.001); assert(espEntries[enemy].overlay.Position.X.Offset==xBefore)
 ctx.ESP.render(camera, 0.02); assert(espEntries[enemy].overlay.Position.X.Offset==xBefore+60)
 assert(boundingCalls==callsBefore)
+-- Highlight-only mode skips expensive bounding-box scans.
+local saved2D={settings.ESPBoxStyle,settings.ESPTracer,settings.ESPNames,settings.ESPTeams,settings.ESPDistance,settings.ESPHealth,settings.ESPTool,settings.ESPHealthBar}
+settings.ESPBoxStyle='Off';settings.ESPTracer='Off';settings.ESPNames=false;settings.ESPTeams=false;settings.ESPDistance=false;settings.ESPHealth=false;settings.ESPTool=false;settings.ESPHealthBar=false
+local beforeHighlightScan=boundingCalls;ctx.ESP.update();assert(boundingCalls==beforeHighlightScan and not espEntries[enemy].overlay.Visible)
+settings.ESPBoxStyle,settings.ESPTracer,settings.ESPNames,settings.ESPTeams,settings.ESPDistance,settings.ESPHealth,settings.ESPTool,settings.ESPHealthBar=table.unpack(saved2D)
+ctx.ESP.update();assert(boundingCalls>beforeHighlightScan)
 camera.shiftX=0; anchor.Position=Vector3.new(0,0,30); ctx.ESP.render(camera)
 settings.ESPShowAllies=true; settings.ESPShowNeutral=false; settings.ESPTeams=true; settings.ESPHealth=true; settings.ESPTool=true
 settings.ESPBoxStyle='Full'; settings.ESPTracer='Top'; settings.ESPHighlight='Outline'; settings.ESPDepth='Occluded'
-ctx.ESP.update(); assert(espEntries[ally] and not espEntries[neutral] and espEntries[enemy])
+ctx.ESP.update(); assert(espEntries[ally] and espEntries[neutral] and not espEntries[neutral].active and espEntries[enemy])
 assert(espEntries[enemy].topText.Text:find('Blue') and espEntries[enemy].bottomText.Text:find('80 HP') and espEntries[enemy].bottomText.Text:find('Rifle'))
 assert(espEntries[enemy].tracer.Visible and espEntries[enemy].highlight.FillTransparency==1 and espEntries[enemy].highlight.DepthMode==Enum.HighlightDepthMode.Occluded)
-settings.ESPVisibleOnly=true; camera.obstacles={1}; ctx.ESP.update(); assert(next(espEntries)==nil)
-camera.obstacles={}; settings.ESPVisibleOnly=false; hum.Health=0; ctx.ESP.update(); assert(next(espEntries)==nil)
-settings.ESPAliveOnly=false; ctx.ESP.update(); assert(espEntries[enemy])
+local pooledEnemy = espEntries[enemy]
+settings.ESPVisibleOnly=true; camera.obstacles={1}; ctx.ESP.update()
+assert(espEntries[enemy]==pooledEnemy and not pooledEnemy.active and not pooledEnemy.overlay.Visible and not pooledEnemy.tracer.Visible and not pooledEnemy.highlight.Enabled)
+ctx.ESP.render(camera); assert(not pooledEnemy.overlay.Visible)
+camera.obstacles={}; settings.ESPVisibleOnly=false; hum.Health=0; ctx.ESP.update(); assert(not pooledEnemy.active)
+hum.Health=80; ctx.ESP.update(); assert(espEntries[enemy]==pooledEnemy and pooledEnemy.active and pooledEnemy.overlay.Visible)
+hum.Health=0; settings.ESPAliveOnly=false; ctx.ESP.update(); assert(espEntries[enemy])
 local before=espEntries[enemy]; enemy.Character=nil; ctx.ESP.update(); assert(not espEntries[enemy] and before.overlay.destroyed and before.highlight.destroyed and before.tracer.destroyed)
 localPlayer.Team=nil; localPlayer.Neutral=true; assert(ctx.ESP.relationOf(ally)=='Neutral' and ctx.ESP.currentTeamName(localPlayer)=='Neutral / no team')
-settings.ESP=false; ctx.ESP.update(); assert(next(espEntries)==nil)
-settings.ESP=true; settings.ESPShowNeutral=true; ctx.ESP.update(); assert(espEntries[ally])
+settings.ESP=false; ctx.ESP.update(); assert(espEntries[ally] and not espEntries[ally].active and not espEntries[ally].overlay.Visible)
+settings.ESP=true; settings.ESPShowNeutral=true; ctx.ESP.update(); assert(espEntries[ally] and espEntries[ally].active)
+local departed=espEntries[neutral]; playerService.list={localPlayer,ally,enemy}; ctx.ESP.update()
+assert(not espEntries[neutral] and departed.overlay.destroyed and departed.highlight.destroyed and departed.tracer.destroyed)
+playerService.list={localPlayer,ally,enemy,neutral}
 local function press(code,processed)
  local e={UserInputType=Enum.UserInputType.Keyboard,KeyCode=code}
  if code==Enum.UserInputType.MouseButton1 or code==Enum.UserInputType.MouseButton2 or code==Enum.UserInputType.MouseButton3 then e.UserInputType=code end
@@ -158,7 +171,8 @@ settings.Aimbot=true
 hum.Health=80; enemy.Character=character; anchor.AssemblyLinearVelocity=Vector3.new(0,0,0)
 local cframe = camera.CFrame; cframe.lerps=0
 function cframe:Lerp(target,alpha) self.lerps=self.lerps+1; assert(alpha>0 and alpha<=1); return self end
-ctx.Aim.step(1/60,true,false,false); assert(cframe.lerps>0)
+ctx.Aim.step(1/60,true,false,false); assert(cframe.lerps>0 and ctx.Aim.diagnostic():find("Target:"))
+local lastDiag=ctx.Aim.diagnostic();ctx.Aim.step(1/60,true,true,false); assert(ctx.Aim.diagnostic()==lastDiag)
 local previous=cframe.lerps;ctx.Aim.step(1/60,true,true,false);assert(cframe.lerps==previous)
 -- Test movement module and reversible state against mock Roblox objects.
 localPlayer.Character=character

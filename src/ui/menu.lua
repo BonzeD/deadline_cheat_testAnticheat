@@ -293,6 +293,9 @@ toggle(aimPage, "Aimbot", "Master switch: must be ON", function() return setting
 bindRow("Aim activation key", "Hold / press after closing menu", "Trigger", aimPage)
 choice(aimPage, "Activation", "Hold = keep pressed; Toggle = press once", "AimMode", {"Hold", "Toggle"})
 toggle(aimPage, "Silent aim", "Experimental: Mouse.Hit / Target", function() return settings.SilentAim end, toggleSilentAim)
+local aimDiagCard = card(aimPage, "Last aim check", "Close menu, hold / toggle the aim key, then reopen")
+local aimDiag = text(aimDiagCard, "No attempt yet", 11, UDim2.new(1,-190,0,8), UDim2.fromOffset(178,36), C.accent)
+aimDiag.TextXAlignment = Enum.TextXAlignment.Right; aimDiag.TextScaled = true; aimDiag.TextWrapped = true
 section(aimPage, "Target filters", "Filters and targeting")
 toggle(aimPage, "Team check", "Exclude your own team", function() return settings.TeamCheck end, function() flip("TeamCheck") end)
 toggle(aimPage, "Wall check", "Require a clear line of sight", function() return settings.WallCheck end, toggleWallCheck)
@@ -319,6 +322,7 @@ local function updateTeamChecker()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer then local group = relationOf(player); counts[group] = counts[group] + 1 end
     end
+    aimDiag.Text = Aim.diagnostic()
     teamValue.Text = currentTeamName(localPlayer)
     countValue.Text = string.format("A %d  ·  E %d  ·  N %d", counts.Ally, counts.Enemy, counts.Neutral)
 end
