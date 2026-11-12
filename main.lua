@@ -34,6 +34,8 @@ local makeTrigger = loadModule("src/trigger/init.lua")
 local makeVisuals = loadModule("src/visuals/init.lua")
 local makeMobility = loadModule("src/mobility/init.lua")
 local makeUI = loadModule("src/ui/menu.lua")
+local makeCursor = loadModule("src/ui/cursor.lua")
+local makeConfig = loadModule("src/config/init.lua")
 local settings = {}
 for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movementSettings, bypassSettings, triggerSettings, visualSettings, mobilitySettings}) do
     assert(type(defaults) == "table", "Invalid settings module")
@@ -42,7 +44,7 @@ for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movemen
         settings[key] = value
     end
 end
-assert(type(makeAim) == "function" and type(makeESP) == "function" and type(makeExperiments) == "function" and type(makeMovement) == "function" and type(makeBypass) == "function" and type(makeTrigger) == "function" and type(makeVisuals) == "function" and type(makeMobility) == "function" and type(makeUI) == "function", "Invalid module")
+assert(type(makeAim) == "function" and type(makeESP) == "function" and type(makeExperiments) == "function" and type(makeMovement) == "function" and type(makeBypass) == "function" and type(makeTrigger) == "function" and type(makeVisuals) == "function" and type(makeMobility) == "function" and type(makeUI) == "function" and type(makeCursor) == "function" and type(makeConfig) == "function", "Invalid module")
 if type(env.TestClientCleanup) == "function" then pcall(env.TestClientCleanup) end
 local ctx = {env = env, settings = settings, connections = {}, running = true, setStatus = function() end}
 ctx.Players = game:GetService("Players")
@@ -61,6 +63,7 @@ local function cleanup()
     if ctx.Visuals then pcall(ctx.Visuals.cleanup) end
     if ctx.Mobility then pcall(ctx.Mobility.cleanup) end
     if ctx.ESP then pcall(ctx.ESP.cleanup) elseif ctx.espLayer then pcall(function() ctx.espLayer:Destroy() end) end
+    if ctx.Cursor then pcall(ctx.Cursor.cleanup) end
     if ctx.UI then pcall(ctx.UI.cleanup) elseif ctx.gui then pcall(function() ctx.gui:Destroy() end) end
     if env.TestClientCleanup == cleanup then env.TestClientCleanup = nil end
 end
@@ -74,11 +77,14 @@ local ok, message = pcall(function()
     ctx.Visuals = makeVisuals(ctx)
     ctx.Mobility = makeMobility(ctx)
     ctx.ESP = makeESP(ctx)
+    ctx.Cursor = makeCursor(ctx)
+    ctx.Config = makeConfig(ctx, root)
     ctx.UI = makeUI(ctx)
     ctx.connections[#ctx.connections + 1] = ctx.RunService.Stepped:Connect(ctx.Experiments.step)
     ctx.connections[#ctx.connections + 1] = ctx.RunService.Heartbeat:Connect(ctx.Movement.step)
     ctx.connections[#ctx.connections + 1] = ctx.RunService.Heartbeat:Connect(function() ctx.Mobility.step(os.clock()) end)
     ctx.RunService:BindToRenderStep("TestClientAimbot", Enum.RenderPriority.Camera.Value + 1, function(dt)
+        ctx.Cursor.step()
         ctx.Visuals.step(dt, workspace.CurrentCamera)
         ctx.UI.updateFOV(workspace.CurrentCamera)
         ctx.Aim.step(dt, ctx.UI.isAimActive(), ctx.UI.isMenuVisible(), ctx.UserInputService:GetFocusedTextBox() ~= nil)

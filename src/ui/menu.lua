@@ -4,6 +4,7 @@ local Players, localPlayer, settings, UserInputService = ctx.Players, ctx.localP
 local connections, Aim, ESP, Experiments = ctx.connections, ctx.Aim, ctx.ESP, ctx.Experiments
 local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
 local Movement, Bypass, Trigger, Visuals, Mobility = ctx.Movement, ctx.Bypass, ctx.Trigger, ctx.Visuals, ctx.Mobility
+local Config, Cursor = ctx.Config, ctx.Cursor
 local aimActive, windowFocused = false, true
 local refreshUI = function() end
 local statusText = "Ready • Right Shift opens or hides the menu."
@@ -35,15 +36,36 @@ gui.Name = "DeadlineTestMenu"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = playerGui
-gui.DisplayOrder = 10
+-- Prefer executor UI container / CoreGui if accessible, otherwise PlayerGui.
+-- Core system menus may still cover or capture input regardless of DisplayOrder.
+local placed = false
+if type(gethui) == "function" then
+    local ok, container = pcall(gethui)
+    if ok and container then placed = pcall(function() gui.Parent = container end) end
+end
+if not placed then
+    local ok, container = pcall(function() return game:GetService("CoreGui") end)
+    if ok and container then placed = pcall(function() gui.Parent = container end) end
+end
+if not placed then gui.Parent = playerGui end
+gui.DisplayOrder = 2147483647
+-- Best effort only: capability and CoreGui stacking vary by executor and Roblox.
+if type(sethiddenproperty)=="function" then
+    pcall(sethiddenproperty, gui, "OnTopOfCoreBlur", true)
+elseif type(setscriptable)=="function" then
+    pcall(function()
+        setscriptable(gui, "OnTopOfCoreBlur", true)
+        pcall(function() gui.OnTopOfCoreBlur=true end)
+        pcall(setscriptable,gui,"OnTopOfCoreBlur",false)
+    end)
+end
 ctx.gui = gui
 
 local C = {
-    background = Color3.fromRGB(12, 17, 28), panel = Color3.fromRGB(23, 30, 44),
-    surface = Color3.fromRGB(32, 42, 59), edge = Color3.fromRGB(67, 85, 107),
-    accent = Color3.fromRGB(89, 226, 192), purple = Color3.fromRGB(111, 104, 220),
-    text = Color3.fromRGB(242, 247, 253), muted = Color3.fromRGB(175, 188, 205),
+    background = Color3.fromRGB(20, 20, 20), panel = Color3.fromRGB(28, 28, 28),
+    surface = Color3.fromRGB(35, 35, 35), edge = Color3.fromRGB(50, 50, 50),
+    accent = Color3.fromRGB(0, 85, 255), purple = Color3.fromRGB(0, 85, 255),
+    text = Color3.fromRGB(255, 255, 255), muted = Color3.fromRGB(175, 175, 175),
 }
 local function make(class, parent, properties)
     local object = Instance.new(class)
@@ -52,7 +74,7 @@ local function make(class, parent, properties)
     return object
 end
 local function round(parent, pixels)
-    make("UICorner", parent, {CornerRadius = UDim.new(0, pixels)})
+    make("UICorner", parent, {CornerRadius = UDim.new(0, pixels >= 9999 and pixels or 2)})
 end
 local function outline(parent, color, transparency)
     make("UIStroke", parent, {Color = color or C.edge, Transparency = transparency or 0, Thickness = 1})
@@ -75,7 +97,7 @@ outline(fov, C.accent, 0.2)
 local panel = make("Frame", gui, {Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.92, 0, 0.84, 0),
     BackgroundColor3 = C.background, BorderSizePixel = 0, ClipsDescendants = true})
-make("UISizeConstraint", panel, {MaxSize = Vector2.new(860, 640), MinSize = Vector2.new(480, 350)})
+make("UISizeConstraint", panel, {MaxSize = Vector2.new(920, 680), MinSize = Vector2.new(680, 390)})
 round(panel, 16); outline(panel)
 local bar = make("Frame", panel, {Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = C.accent})
 make("UIGradient", bar, {Color = ColorSequence.new(C.accent, C.purple)})
@@ -92,6 +114,7 @@ local pages = make("Frame", panel, {BackgroundTransparency = 1, Position = UDim2
 local footer = text(panel, "", 11, UDim2.new(0, 20, 1, -43), UDim2.new(1, -40, 0, 31), C.muted)
 footer.TextWrapped = true
 local navButtons, pageFrames, updaters = {}, {}, {}
+local pageGroups = {}
 local capture = nil
 local order = 0
 local function page(name, caption)
@@ -102,8 +125,18 @@ local function page(name, caption)
     local frame = make("ScrollingFrame", pages, {Name = name, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
         BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = C.accent,
         CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false})
-    make("UIListLayout", frame, {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder})
-    make("UIPadding", frame, {PaddingRight = UDim.new(0, 7), PaddingBottom = UDim.new(0, 8)})
+    local columns = make("Frame", frame, {Name="Columns", BackgroundTransparency=1,
+        Size=UDim2.new(1,-8,0,0), AutomaticSize=Enum.AutomaticSize.Y})
+    make("UIListLayout", columns, {FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder})
+    local left=make("Frame",columns,{Name="Left", LayoutOrder=1, BackgroundTransparency=1,
+        Size=UDim2.new(0.5,-4,0,0), AutomaticSize=Enum.AutomaticSize.Y})
+    local right=make("Frame",columns,{Name="Right", LayoutOrder=2, BackgroundTransparency=1,
+        Size=UDim2.new(0.5,-4,0,0), AutomaticSize=Enum.AutomaticSize.Y})
+    for _, column in ipairs({left,right}) do
+        make("UIListLayout", column, {Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder})
+        make("UIPadding", column, {PaddingBottom=UDim.new(0,8)})
+    end
+    pageGroups[frame]={left=left,right=right,count=0}
     pageFrames[name] = frame
     connections[#connections + 1] = navButton.Activated:Connect(function()
         capture = nil
@@ -121,19 +154,29 @@ local espStylePage = page("ESPStyle", "◌  ESP STYLE")
 local visualPage = page("Visual", "◇  TOOLS")
 local extrasPage = page("Extras", "✦  EXTRAS")
 local bindPage = page("Bindings", "⌘  BINDS")
+local configPage = page("Configs", "▣  CONFIGS")
 local function card(parent, title, subtitle, height)
     order = order + 1
-    local frame = make("Frame", parent, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, height or 62), BackgroundColor3 = C.panel, BorderSizePixel = 0})
-    round(frame, 9); outline(frame, C.edge, 0.45)
-    text(frame, title, 14, UDim2.fromOffset(14, 10), UDim2.new(1, -165, 0, 19), C.text, Enum.Font.GothamSemibold)
-    text(frame, subtitle, 11, UDim2.fromOffset(14, 32), UDim2.new(1, -165, 0, 16), C.muted)
+    local group = pageGroups[parent]
+    assert(group and group.current, "Every page needs a section before controls")
+    local frame = make("Frame", group.current, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, height or 52), BackgroundColor3 = C.panel, BorderSizePixel = 0})
+    local heading=text(frame, title, 12, UDim2.fromOffset(8, 6), UDim2.new(1, -145, 0, 18), C.text, Enum.Font.GothamSemibold)
+    local detail=text(frame, subtitle, 10, UDim2.fromOffset(8, 25), UDim2.new(1, -145, 0, 18), C.muted)
+    heading.TextTruncate=Enum.TextTruncate.AtEnd; detail.TextTruncate=Enum.TextTruncate.AtEnd
     return frame
 end
 local function section(parent, title, description)
     order = order + 1
-    local area = make("Frame", parent, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1})
-    text(area, title, 17, UDim2.fromOffset(2, 0), UDim2.new(1, -4, 0, 22), C.text, Enum.Font.GothamBold)
-    text(area, description, 11, UDim2.fromOffset(2, 25), UDim2.new(1, -4, 0, 16), C.muted)
+    local group=assert(pageGroups[parent]); group.count=group.count+1
+    local column=group.count % 2 == 1 and group.left or group.right
+    local area=make("Frame",column,{Name="Group_"..title, LayoutOrder=order, BackgroundColor3=C.panel,
+        BorderSizePixel=0, Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y})
+    round(area,2);outline(area,C.edge,0)
+    make("UIListLayout",area,{Padding=UDim.new(0,1), SortOrder=Enum.SortOrder.LayoutOrder})
+    local heading=text(area,title,13,UDim2.fromOffset(0,0),UDim2.new(1,0,0,27),C.text,Enum.Font.GothamBold)
+    heading.LayoutOrder=0;heading.BackgroundTransparency=0;heading.BackgroundColor3=C.surface
+    make("UIPadding",heading,{PaddingLeft=UDim.new(0,8)})
+    group.current=area
 end
 local function toggle(parent, name, description, getter, action)
     local frame = card(parent, name, description)
@@ -142,16 +185,17 @@ local function toggle(parent, name, description, getter, action)
     local function update()
         local on = getter()
         b.Text = on and "●  ON" or "○  OFF"
-        b.BackgroundColor3 = on and Color3.fromRGB(41, 103, 97) or C.surface
+        b.BackgroundColor3 = on and Color3.fromRGB(0, 65, 190) or C.surface
         b.TextColor3 = on and C.accent or C.muted
     end
     table.insert(updaters, update)
     connections[#connections + 1] = b.Activated:Connect(function() action(); refreshUI() end)
 end
 local function choice(parent, name, description, key, options)
+    Config.choice(key, options)
     local frame = card(parent, name, description)
     local b = button(frame, "")
-    b.Size = UDim2.fromOffset(124, 30); b.Position = UDim2.new(1, -136, 0.5, -15)
+    b.Size = UDim2.fromOffset(120, 30); b.Position = UDim2.new(1, -128, 0.5, -15)
     table.insert(updaters, function() b.Text = tostring(settings[key]) .. "  ›" end)
     connections[#connections + 1] = b.Activated:Connect(function()
         local index = table.find(options, settings[key]) or 0
@@ -163,6 +207,7 @@ local function choice(parent, name, description, key, options)
     end)
 end
 local function slider(parent, name, description, key, minimum, maximum, step, format)
+    Config.number(key, minimum, maximum)
     local frame = card(parent, name, description, 74)
     local value = text(frame, "", 12, UDim2.new(1, -103, 0, 9), UDim2.fromOffset(90, 20), C.accent, Enum.Font.GothamBold)
     value.TextXAlignment = Enum.TextXAlignment.Right
@@ -206,7 +251,7 @@ end
 local function bindRow(name, description, key, parent)
     local frame = card(parent or bindPage, name, description)
     local b = button(frame, "")
-    b.Size = UDim2.fromOffset(128, 30); b.Position = UDim2.new(1, -140, 0.5, -15)
+    b.Size = UDim2.fromOffset(120, 30); b.Position = UDim2.new(1, -128, 0.5, -15)
     table.insert(updaters, function() b.Text = capture == key and "Press key..." or bindName(key) end)
     connections[#connections + 1] = b.Activated:Connect(function()
         capture = key; aimActive = false
@@ -219,6 +264,7 @@ toggle(aimPage, "Aimbot", "Master switch: must be ON", function() return setting
 bindRow("Aim activation key", "Hold / press after closing menu", "Trigger", aimPage)
 choice(aimPage, "Activation", "Hold = keep pressed; Toggle = press once", "AimMode", {"Hold", "Toggle"})
 toggle(aimPage, "Silent aim", "Experimental: Mouse.Hit / Target", function() return settings.SilentAim end, toggleSilentAim)
+section(aimPage, "Target filters", "Filters and targeting")
 toggle(aimPage, "Team check", "Exclude your own team", function() return settings.TeamCheck end, function() flip("TeamCheck") end)
 toggle(aimPage, "Wall check", "Require a clear line of sight", function() return settings.WallCheck end, toggleWallCheck)
 toggle(aimPage, "Sticky target", "Keep target while still eligible", function() return settings.StickyTarget end, function() flip("StickyTarget") end)
@@ -226,6 +272,7 @@ toggle(aimPage, "FOV circle", "Show targeting radius", function() return setting
 choice(aimPage, "Aim part", "Target character body part", "AimPart", {"Head", "HumanoidRootPart", "UpperTorso", "Torso"})
 choice(aimPage, "Target priority", "Screen / distance / health", "AimPriority", {"Screen", "Distance", "Health"})
 slider(aimPage, "Aim height offset", "Vertical offset in studs", "AimVerticalOffset", -5, 5, 0.1, "%.1f studs")
+section(aimPage, "Aim tuning", "Response and distance")
 slider(aimPage, "FOV radius", "Screen pixels from centre", "AimRadius", 30, 600, 5, "%.0f px")
 slider(aimPage, "Response", "Lower is smoother; 1 is instant", "Smoothness", 0.01, 1, 0.01, "%.2f")
 slider(aimPage, "Max distance", "From camera, in studs", "MaxDistance", 25, 3000, 25, "%.0f studs")
@@ -247,12 +294,14 @@ local function updateTeamChecker()
     countValue.Text = string.format("A %d  ·  E %d  ·  N %d", counts.Ally, counts.Enemy, counts.Neutral)
 end
 local function espFlip(key) settings[key] = not settings[key] end
+section(espPage, "Filters", "Choose targets")
 toggle(espPage, "ESP", "Independent from aim filters", function() return settings.ESP end, toggleESP)
 toggle(espPage, "Allies", "Show your own team", function() return settings.ESPShowAllies end, function() espFlip("ESPShowAllies") end)
 toggle(espPage, "Enemies", "Show other known teams", function() return settings.ESPShowEnemies end, function() espFlip("ESPShowEnemies") end)
 toggle(espPage, "Neutral / unknown", "Includes missing team info", function() return settings.ESPShowNeutral end, function() espFlip("ESPShowNeutral") end)
 toggle(espPage, "Alive only", "Hide dead characters", function() return settings.ESPAliveOnly end, function() espFlip("ESPAliveOnly") end)
 toggle(espPage, "Visible only", "Ray visibility check for all ESP", function() return settings.ESPVisibleOnly end, function() espFlip("ESPVisibleOnly") end)
+section(espPage, "Performance", "Update frequency")
 slider(espPage, "ESP distance", "Maximum distance from camera", "ESPMaxDistance", 25, 3000, 25, "%.0f studs")
 slider(espPage, "Scan interval", "Filters, labels, model bounds", "ESPRefresh", 0.05, 1, 0.05, "%.2f s")
 slider(espPage, "2D refresh cap", "Lower reduces overlay workload", "ESPFrameRate", 15, 120, 15, "%.0f FPS")
@@ -262,6 +311,7 @@ choice(espStylePage, "Highlight depth", "Applies only to highlight", "ESPDepth",
 choice(espStylePage, "Outline color", "Highlight outline color", "ESPOutlineColor", {"White", "Same", "Black"})
 slider(espStylePage, "Fill transparency", "0 opaque → 1 invisible", "ESPFillTransparency", 0, 1, 0.05, "%.2f")
 slider(espStylePage, "Outline transparency", "0 opaque → 1 invisible", "ESPOutlineTransparency", 0, 1, 0.05, "%.2f")
+section(espStylePage, "Colors", "ESP colors")
 choice(espStylePage, "Color mode", "Relation / team / health / rainbow", "ESPColorMode", {"Relation", "Team", "Health", "Rainbow"})
 slider(espStylePage, "Ally hue", "Relation color: hue", "ESPAllyHue", 0, 360, 5, "%.0f°")
 slider(espStylePage, "Enemy hue", "Relation color: hue", "ESPEnemyHue", 0, 360, 5, "%.0f°")
@@ -271,6 +321,7 @@ choice(espStylePage, "Box style", "2D bounding box", "ESPBoxStyle", {"Off", "Ful
 slider(espStylePage, "Line thickness", "Box and tracer pixels", "ESPBoxThickness", 1, 6, 1, "%.0f px")
 slider(espStylePage, "Corner length", "Fraction of box sides", "ESPCornerSize", 0.1, 0.5, 0.05, "%.2f")
 choice(espStylePage, "Tracers", "Screen edge to character", "ESPTracer", {"Off", "Bottom", "Center", "Top"})
+section(espStylePage, "Labels", "Text and health")
 toggle(espStylePage, "Name", "Show player name", function() return settings.ESPNames end, function() espFlip("ESPNames") end)
 choice(espStylePage, "Name type", "Display name or username", "ESPNameMode", {"DisplayName", "Username"})
 toggle(espStylePage, "Team label", "Show target team", function() return settings.ESPTeams end, function() espFlip("ESPTeams") end)
@@ -288,9 +339,11 @@ section(visualPage, "Test tools", "Client-side experiments")
 toggle(visualPage, "Speed test", "Client movement experiment", Movement.isSpeed, toggleSpeed)
 choice(visualPage, "Speed mode", "WalkSpeed / CFrame / Velocity", "MovementMode", {"WalkSpeed", "CFrame", "Velocity"})
 slider(visualPage, "Speed amount", "CFrame adds; others set", "MovementSpeed", 0, 150, 1, "%.0f studs/s")
+section(visualPage, "Jump", "Air jump tests")
 toggle(visualPage, "Air jump", "Press jump while in air", Movement.isJump, toggleAirJump)
 choice(visualPage, "Air jump mode", "State or vertical velocity", "AirJumpMode", {"State", "Velocity"})
 slider(visualPage, "Jump velocity", "Only in Velocity mode", "AirJumpVelocity", 10, 150, 5, "%.0f studs/s")
+section(visualPage, "Experiments", "Authorized tests only")
 toggle(visualPage, "Noclip", "Local collision experiment", Experiments.isNoclip, toggleNoclip)
 toggle(visualPage, "Watcher test", "Needs allowlisted script names", Experiments.isWatcher, toggleWatchers)
 toggle(visualPage, "Speed read test", "Configured test PlaceId only", Bypass.isSpeedSpoof, toggleSpoof)
@@ -300,12 +353,14 @@ section(extrasPage, "Extra features", "Optional tools and visual settings")
 toggle(extrasPage, "Auto jump", "Repeated grounded jumps", Mobility.isEnabled, toggleAutoJump)
 toggle(extrasPage, "Jump moving only", "Do not jump while stationary", function() return settings.AutoJumpMovingOnly end, function() settings.AutoJumpMovingOnly = not settings.AutoJumpMovingOnly end)
 slider(extrasPage, "Auto jump interval", "Minimum time between jumps", "AutoJumpInterval", 0.1, 1, 0.05, "%.2f s")
+section(extrasPage, "Trigger", "Activation and targeting")
 toggle(extrasPage, "Trigger bot", "Auto-click over a player", Trigger.isEnabled, toggleTrigger)
 choice(extrasPage, "Trigger activation", "Aim trigger or always", "TriggerActivation", {"Aim", "Always"})
 toggle(extrasPage, "Trigger team check", "Exclude same Roblox Team", function() return settings.TriggerTeamCheck end, function() settings.TriggerTeamCheck = not settings.TriggerTeamCheck end)
 slider(extrasPage, "Trigger delay", "Time on target before clicking", "TriggerDelay", 0, 1, 0.05, "%.2f s")
 slider(extrasPage, "Click interval", "Minimum time between clicks", "TriggerInterval", 0.05, 1, 0.05, "%.2f s")
 slider(extrasPage, "Trigger distance", "Maximum target distance", "TriggerDistance", 25, 3000, 25, "%.0f studs")
+section(extrasPage, "Crosshair settings", "Appearance")
 toggle(extrasPage, "Crosshair", "Screen-centred overlay", function() return settings.CrosshairEnabled end, toggleCrosshair)
 choice(extrasPage, "Crosshair shape", "Cross, dot, or both", "CrosshairShape", {"Cross", "Dot", "Cross+Dot"})
 slider(extrasPage, "Crosshair length", "Arm length", "CrosshairLength", 3, 40, 1, "%.0f px")
@@ -315,6 +370,7 @@ slider(extrasPage, "Crosshair hue", "Color hue", "CrosshairHue", 0, 360, 5, "%.0
 slider(extrasPage, "Crosshair transparency", "0 opaque, 1 invisible", "CrosshairTransparency", 0, 1, 0.05, "%.2f")
 toggle(extrasPage, "Crosshair spin", "Rotate overlay", function() return settings.CrosshairSpin end, function() settings.CrosshairSpin = not settings.CrosshairSpin end)
 slider(extrasPage, "Spin speed", "Degrees per second", "CrosshairSpinSpeed", 0, 360, 10, "%.0f°/s")
+section(extrasPage, "Lighting and camera", "Local overrides")
 toggle(extrasPage, "Fullbright", "Local lighting only", function() return settings.FullbrightEnabled end, toggleBright)
 slider(extrasPage, "Brightness", "Local lighting override", "FullbrightLevel", 0, 10, 0.5, "%.1f")
 toggle(extrasPage, "No fog", "Local FogEnd override", function() return settings.NoFogEnabled end, toggleFog)
@@ -328,6 +384,7 @@ bindRow("Toggle crosshair", "No key until assigned", "Crosshair")
 bindRow("Toggle fullbright", "No key until assigned", "Bright")
 bindRow("Toggle no fog", "No key until assigned", "Fog")
 bindRow("Toggle camera FOV", "No key until assigned", "CameraFov")
+section(bindPage, "Other bindings", "Assign optional keys")
 bindRow("Toggle aimbot", "Master ON/OFF, not activation key", "Aimbot")
 bindRow("Toggle ESP", "No key until assigned", "ESP")
 bindRow("Toggle speed", "No key until assigned", "Speed")
@@ -339,14 +396,55 @@ bindRow("Toggle watcher", "No key until assigned", "Watcher")
 bindRow("Toggle silent aim", "No key until assigned", "Silent")
 bindRow("Toggle wall check", "No key until assigned", "Wall")
 local info = card(bindPage, "Menu: Right Shift", "Reserved so the menu can always reopen")
+section(configPage, "Profiles", "Save and load local settings + key bindings")
+local configNameCard = card(configPage, "Profile name", "Letters, numbers, _ or -", 68)
+local configName = make("TextBox", configNameCard, {Name="ConfigName", Text="default", PlaceholderText="Profile name",
+    ClearTextOnFocus=false, TextSize=13, Font=Enum.Font.GothamSemibold, TextColor3=C.text,
+    BackgroundColor3=C.surface, BorderSizePixel=0, Position=UDim2.new(1,-160,0.5,-17), Size=UDim2.fromOffset(148,34)})
+round(configName,8)
+local bindingKeys={"Trigger"}
+for key in pairs(actions) do bindingKeys[#bindingKeys+1]=key end
+table.sort(bindingKeys)
+section(configPage, "Saved profiles", "Files in workspace")
+local listCard=card(configPage, "Saved profiles", "Refresh to see local files", 88)
+local listText=text(listCard, "Not loaded", 11, UDim2.fromOffset(14,49), UDim2.new(1,-28,0,28), C.accent)
+listText.TextWrapped=true
+local function refreshConfigList()
+    local names,reason=Config.list()
+    listText.Text=names and (#names>0 and table.concat(names, "  •  ") or "No saved profiles") or reason
+end
+local function configAction(name, description, label, action)
+    local frame=card(configPage,name,description)
+    local b=button(frame,label);b.Size=UDim2.fromOffset(110,34);b.Position=UDim2.new(1,-122,0.5,-17)
+    connections[#connections+1]=b.Activated:Connect(action)
+end
+configAction("Save profile", "Overwrites the same name", "SAVE", function()
+    local ok,err=pcall(Config.save,configName.Text,binds,bindingKeys)
+    setStatus(ok and ("Saved profile: " .. configName.Text) or ("Save failed: " .. tostring(err)))
+    if ok then refreshConfigList() end
+end)
+configAction("Load profile", "Applies settings and binds", "LOAD", function()
+    local oldMode=settings.MovementMode
+    local ok,err=pcall(Config.load,configName.Text,binds,bindingKeys)
+    if ok then
+        if oldMode~=settings.MovementMode then Movement.modeChanged() end
+        Bypass.updateSpoofValue(); aimActive=false; Aim.reset(); ESP.update(); refreshUI()
+    end
+    setStatus(ok and ("Loaded profile: " .. configName.Text) or ("Load failed: " .. tostring(err)))
+end)
+configAction("Refresh profiles", "Requires listfiles support", "REFRESH", refreshConfigList)
+refreshConfigList()
+
 refreshUI = function()
     for _, update in ipairs(updaters) do update() end
     footer.Text = statusText
 end
 pageFrames.Aim.Visible = true; navButtons.Aim.BackgroundColor3 = C.purple
+Cursor.setOpen(true)
 refreshUI()
 local function showMenu(visible)
     panel.Visible = visible
+    Cursor.setOpen(visible)
     if visible then aimActive = false; Aim.reset() end
     capture = nil
     refreshUI()
