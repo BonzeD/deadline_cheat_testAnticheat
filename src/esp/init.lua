@@ -75,24 +75,33 @@ local function espClear()
     for player in pairs(espEntries) do table.insert(remove, player) end
     for _, player in ipairs(remove) do removeESP(player) end
 end
--- Project all bounding box corners. Reject boxes crossing the camera plane (rather than drawing bogus lines).
-local function projectedBounds(camera, character)
-    local ok, cf, size = pcall(function() return character:GetBoundingBox() end)
-    if not ok or not cf or not size then return nil end
-    local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+-- Scan expensive model bounds at the configured interval; move the cached world-space
+-- corners with the root each frame. Pose and rotation update on the next scan.
+local function cacheBounds(e, anchor)
+    local ok, cf, size = pcall(function() return e.character:GetBoundingBox() end)
+    if not ok or not cf or not size then e.corners = nil; return end
+    local corners = {}
     for _, x in ipairs({-1, 1}) do
         for _, y in ipairs({-1, 1}) do
             for _, z in ipairs({-1, 1}) do
-                local point = camera:WorldToViewportPoint(cf:PointToWorldSpace(Vector3.new(size.X*x/2,size.Y*y/2,size.Z*z/2)))
-                if point.Z <= 0 then return nil end
-                minX, minY = math.min(minX,point.X), math.min(minY,point.Y)
-                maxX, maxY = math.max(maxX,point.X), math.max(maxY,point.Y)
+                corners[#corners + 1] = cf:PointToWorldSpace(Vector3.new(size.X*x/2,size.Y*y/2,size.Z*z/2))
             end
         end
     end
+    e.corners, e.anchor, e.anchorAtScan = corners, anchor, anchor.Position
+end
+local function projectedBounds(camera, e)
+    if not e.corners or not e.anchor or not e.anchorAtScan then return nil end
+    local delta = e.anchor.Position - e.anchorAtScan
+    local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+    for _, corner in ipairs(e.corners) do
+        local point = camera:WorldToViewportPoint(corner + delta)
+        if point.Z <= 0 then return nil end
+        minX, minY = math.min(minX,point.X), math.min(minY,point.Y)
+        maxX, maxY = math.max(maxX,point.X), math.max(maxY,point.Y)
+    end
     local viewport = camera.ViewportSize
     if maxX < 0 or maxY < 0 or minX > viewport.X or minY > viewport.Y then return nil end
-    -- Clamp pathological boxes near the camera while keeping partially visible targets usable.
     minX, minY = math.max(-viewport.X,minX), math.max(-viewport.Y,minY)
     maxX, maxY = math.min(viewport.X*2,maxX), math.min(viewport.Y*2,maxY)
     return minX, minY, math.max(2,maxX-minX), math.max(2,maxY-minY)
@@ -102,7 +111,7 @@ local function updateBox(e, width, height, color)
     local horizontal = style == "Corners" and width * settings.ESPCornerSize or width
     local vertical = style == "Corners" and height * settings.ESPCornerSize or height
     local line = e.lines
-    for _, item in ipairs(line) do item.Visible = style ~= "Off"; item.BackgroundColor3 = color; item.BackgroundTransparency = settings.ESPOverlayTransparency end
+    -- Style is refreshed during the scan; only geometry changes in render.
     -- Four pairs of corner strokes; in Full mode they overlap to create four edges.
     local spec = {
         {0,0,horizontal,t}, {0,0,t,vertical}, {width-horizontal,0,horizontal,t}, {width-t,0,t,vertical},
@@ -112,6 +121,45 @@ local function updateBox(e, width, height, color)
     for i, coords in ipairs(spec) do
         line[i].Position = UDim2.fromOffset(coords[1],coords[2])
         line[i].Size = UDim2.fromOffset(coords[3],coords[4])
+    end
+end
+local renderElapsed = 0
+local function renderESP(camera, dt)
+    if dt then
+        renderElapsed = renderElapsed + math.max(0, dt)
+        local interval = 1 / math.max(1, settings.ESPFrameRate)
+        if renderElapsed < interval then return end
+        renderElapsed = renderElapsed % interval
+    end
+    camera = camera or workspace.CurrentCamera
+    if not settings.ESP or not camera then return end
+    for player, e in pairs(espEntries) do
+        local has2D = settings.ESPBoxStyle ~= "Off" or settings.ESPTracer ~= "Off" or settings.ESPNames or settings.ESPTeams or settings.ESPDistance or settings.ESPHealth or settings.ESPTool or settings.ESPHealthBar
+        if not has2D or player.Character ~= e.character then
+            e.overlay.Visible, e.tracer.Visible = false, false
+        else
+            local x,y,w,h = projectedBounds(camera, e)
+            e.overlay.Visible = x ~= nil
+            e.tracer.Visible = x ~= nil and settings.ESPTracer ~= "Off"
+            if x then
+                e.overlay.Position = UDim2.fromOffset(x,y)
+                e.overlay.Size = UDim2.fromOffset(w,h)
+                updateBox(e,w,h,e.color)
+                local barX = settings.ESPHealthPosition == "Right" and w + 4 or -settings.ESPHealthWidth - 4
+                e.healthBack.Position, e.healthBack.Size = UDim2.fromOffset(barX,0), UDim2.fromOffset(settings.ESPHealthWidth,h)
+                if e.tracer.Visible then
+                    local v = camera.ViewportSize
+                    local startX, startY = v.X/2, settings.ESPTracer == "Top" and 0 or settings.ESPTracer == "Center" and v.Y/2 or v.Y
+                    local endX, endY = x+w/2, y+h
+                    local dx,dy = endX-startX,endY-startY
+                    e.tracer.Position = UDim2.fromOffset((startX+endX)/2,(startY+endY)/2)
+                    e.tracer.Size = UDim2.fromOffset(math.sqrt(dx*dx+dy*dy), settings.ESPBoxThickness)
+                    e.tracer.Rotation = math.deg(math.atan2(dy,dx))
+                    e.tracer.BackgroundColor3 = e.color
+                    e.tracer.BackgroundTransparency = settings.ESPOverlayTransparency
+                end
+            end
+        end
     end
 end
 local function updateESP()
@@ -147,45 +195,31 @@ local function updateESP()
                         hl.FillTransparency = settings.ESPHighlight == "Outline" and 1 or settings.ESPFillTransparency
                         hl.OutlineTransparency = settings.ESPHighlight == "Fill" and 1 or settings.ESPOutlineTransparency
                         hl.DepthMode = settings.ESPDepth == "Occluded" and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
-                        local x,y,w,h = projectedBounds(camera, character)
-                        e.overlay.Visible = x ~= nil
-                        e.tracer.Visible = x ~= nil and settings.ESPTracer ~= "Off"
-                        if x then
-                            e.overlay.Position = UDim2.fromOffset(x,y)
-                            e.overlay.Size = UDim2.fromOffset(w,h)
-                            updateBox(e,w,h,color)
-                            local top, bottom = {}, {}
-                            if settings.ESPNames then table.insert(top, settings.ESPNameMode == "Username" and player.Name or player.DisplayName) end
-                            if settings.ESPTeams then table.insert(top, "[" .. currentTeamName(player) .. "]") end
-                            if settings.ESPDistance then table.insert(bottom, tostring(math.floor(distance + 0.5)) .. " studs") end
-                            if settings.ESPHealth then table.insert(bottom, tostring(math.max(0, math.floor(humanoid.Health + 0.5))) .. " HP") end
-                            if settings.ESPTool then
-                                local tool = character:FindFirstChildOfClass("Tool")
-                                if tool then table.insert(bottom, tool.Name) end
-                            end
-                            e.topText.Text, e.bottomText.Text = table.concat(top, "  "), table.concat(bottom, "  |  ")
-                            e.topText.TextSize, e.bottomText.TextSize = settings.ESPTextSize, settings.ESPTextSize
-                            e.topText.TextColor3, e.bottomText.TextColor3 = color, color
-                            e.topText.TextTransparency, e.bottomText.TextTransparency = settings.ESPOverlayTransparency, settings.ESPOverlayTransparency
-                            e.topText.TextStrokeTransparency, e.bottomText.TextStrokeTransparency = math.max(0.25,settings.ESPOverlayTransparency), math.max(0.25,settings.ESPOverlayTransparency)
-                            e.healthBack.Visible = settings.ESPHealthBar
-                            local barX = settings.ESPHealthPosition == "Right" and w + 4 or -settings.ESPHealthWidth - 4
-                            e.healthBack.Position, e.healthBack.Size = UDim2.fromOffset(barX,0), UDim2.fromOffset(settings.ESPHealthWidth,h)
-                            local ratio = humanoid.MaxHealth > 0 and math.clamp(humanoid.Health / humanoid.MaxHealth,0,1) or 0
-                            e.healthFill.Size = UDim2.fromScale(1,ratio)
-                            e.healthFill.BackgroundColor3 = Color3.fromRGB(math.floor(255*(1-ratio)),math.floor(230*ratio),80)
-                            if e.tracer.Visible then
-                                local v = camera.ViewportSize
-                                local startX, startY = v.X/2, settings.ESPTracer == "Top" and 0 or settings.ESPTracer == "Center" and v.Y/2 or v.Y
-                                local endX, endY = x+w/2, y+h
-                                local dx,dy = endX-startX,endY-startY
-                                e.tracer.Position = UDim2.fromOffset((startX+endX)/2,(startY+endY)/2)
-                                e.tracer.Size = UDim2.fromOffset(math.sqrt(dx*dx+dy*dy), settings.ESPBoxThickness)
-                                e.tracer.Rotation = math.deg(math.atan2(dy,dx))
-                                e.tracer.BackgroundColor3 = color
-                                e.tracer.BackgroundTransparency = settings.ESPOverlayTransparency
-                            end
+                        e.color = color
+                        for i, item in ipairs(e.lines) do
+                            item.Visible = settings.ESPBoxStyle == "Corners" or (settings.ESPBoxStyle == "Full" and (i == 1 or i == 2 or i == 4 or i == 5))
+                            item.BackgroundColor3 = color
+                            item.BackgroundTransparency = settings.ESPOverlayTransparency
                         end
+                        cacheBounds(e, anchor)
+                        local top, bottom = {}, {}
+                        if settings.ESPNames then table.insert(top, settings.ESPNameMode == "Username" and player.Name or player.DisplayName) end
+                        if settings.ESPTeams then table.insert(top, "[" .. currentTeamName(player) .. "]") end
+                        if settings.ESPDistance then table.insert(bottom, tostring(math.floor(distance + 0.5)) .. " studs") end
+                        if settings.ESPHealth then table.insert(bottom, tostring(math.max(0, math.floor(humanoid.Health + 0.5))) .. " HP") end
+                        if settings.ESPTool then
+                            local tool = character:FindFirstChildOfClass("Tool")
+                            if tool then table.insert(bottom, tool.Name) end
+                        end
+                        e.topText.Text, e.bottomText.Text = table.concat(top, "  "), table.concat(bottom, "  |  ")
+                        e.topText.TextSize, e.bottomText.TextSize = settings.ESPTextSize, settings.ESPTextSize
+                        e.topText.TextColor3, e.bottomText.TextColor3 = color, color
+                        e.topText.TextTransparency, e.bottomText.TextTransparency = settings.ESPOverlayTransparency, settings.ESPOverlayTransparency
+                        e.topText.TextStrokeTransparency, e.bottomText.TextStrokeTransparency = math.max(0.25,settings.ESPOverlayTransparency), math.max(0.25,settings.ESPOverlayTransparency)
+                        e.healthBack.Visible = settings.ESPHealthBar
+                        local ratio = humanoid.MaxHealth > 0 and math.clamp(humanoid.Health / humanoid.MaxHealth,0,1) or 0
+                        e.healthFill.Size = UDim2.fromScale(1,ratio)
+                        e.healthFill.BackgroundColor3 = Color3.fromRGB(math.floor(255*(1-ratio)),math.floor(230*ratio),80)
                     end
                 end
             end
@@ -194,10 +228,11 @@ local function updateESP()
     local stale = {}
     for player in pairs(espEntries) do if not active[player] then table.insert(stale,player) end end
     for _, player in ipairs(stale) do removeESP(player) end
+    renderESP(camera)
 end
 
 return {
-    update = updateESP, clear = espClear,
+    update = updateESP, render = renderESP, clear = espClear,
     relationOf = relationOf, currentTeamName = currentTeamName,
     cleanup = function() espClear(); espLayer:Destroy() end,
 }

@@ -1,7 +1,7 @@
 -- Default ESP options; independent of aimbot team filtering.
 return {
     ESP = true, ESPShowAllies = false, ESPShowEnemies = true, ESPShowNeutral = true,
-    ESPAliveOnly = true, ESPVisibleOnly = false, ESPMaxDistance = 1000, ESPRefresh = 0.15,
+    ESPAliveOnly = true, ESPVisibleOnly = false, ESPMaxDistance = 1000, ESPRefresh = 0.15, ESPFrameRate = 60,
     ESPHighlight = "Both", ESPDepth = "Always", ESPOutlineColor = "White",
     ESPFillTransparency = 0.65, ESPOutlineTransparency = 0,
     ESPColorMode = "Relation", ESPAllyHue = 150, ESPEnemyHue = 0, ESPNeutralHue = 45,

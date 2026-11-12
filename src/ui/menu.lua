@@ -40,10 +40,10 @@ gui.DisplayOrder = 10
 ctx.gui = gui
 
 local C = {
-    background = Color3.fromRGB(13, 16, 27), panel = Color3.fromRGB(19, 24, 39),
-    surface = Color3.fromRGB(27, 34, 52), edge = Color3.fromRGB(54, 67, 91),
-    accent = Color3.fromRGB(103, 215, 199), purple = Color3.fromRGB(141, 124, 238),
-    text = Color3.fromRGB(239, 243, 252), muted = Color3.fromRGB(151, 165, 189),
+    background = Color3.fromRGB(12, 17, 28), panel = Color3.fromRGB(23, 30, 44),
+    surface = Color3.fromRGB(32, 42, 59), edge = Color3.fromRGB(67, 85, 107),
+    accent = Color3.fromRGB(89, 226, 192), purple = Color3.fromRGB(111, 104, 220),
+    text = Color3.fromRGB(242, 247, 253), muted = Color3.fromRGB(175, 188, 205),
 }
 local function make(class, parent, properties)
     local object = Instance.new(class)
@@ -75,27 +75,28 @@ outline(fov, C.accent, 0.2)
 local panel = make("Frame", gui, {Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.92, 0, 0.84, 0),
     BackgroundColor3 = C.background, BorderSizePixel = 0, ClipsDescendants = true})
-make("UISizeConstraint", panel, {MaxSize = Vector2.new(720, 540), MinSize = Vector2.new(360, 320)})
+make("UISizeConstraint", panel, {MaxSize = Vector2.new(860, 640), MinSize = Vector2.new(480, 350)})
 round(panel, 16); outline(panel)
 local bar = make("Frame", panel, {Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = C.accent})
 make("UIGradient", bar, {Color = ColorSequence.new(C.accent, C.purple)})
 local header = make("Frame", panel, {Size = UDim2.new(1, 0, 0, 73), BackgroundTransparency = 1, Active = true})
-text(header, "◈  DEADLINE", 19, UDim2.fromOffset(22, 15), UDim2.fromOffset(240, 25), C.text, Enum.Font.GothamBold)
-text(header, "RESEARCH CLIENT  /  AUTHORIZED TESTING", 10, UDim2.fromOffset(24, 42), UDim2.fromOffset(320, 16), C.muted)
-local close = button(header, "—")
-close.Size = UDim2.fromOffset(38, 32); close.Position = UDim2.new(1, -55, 0, 19)
+text(header, "◈  DEADLINE", 22, UDim2.fromOffset(22, 15), UDim2.fromOffset(240, 25), C.text, Enum.Font.GothamBold)
+text(header, "RESEARCH CLIENT    •    RIGHT SHIFT TO HIDE", 11, UDim2.fromOffset(24, 42), UDim2.fromOffset(320, 16), C.muted)
+local close = button(header, "HIDE")
+close.Size = UDim2.fromOffset(64, 34); close.Position = UDim2.new(1, -82, 0, 19)
 local sidebar = make("Frame", panel, {Position = UDim2.fromOffset(16, 78), Size = UDim2.new(0, 126, 1, -132), BackgroundColor3 = C.panel, BorderSizePixel = 0})
 round(sidebar, 10)
 local nav = make("ScrollingFrame", sidebar, {BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 1, -20), BorderSizePixel = 0, ScrollBarThickness = 2, CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y})
 make("UIListLayout", nav, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
 local pages = make("Frame", panel, {BackgroundTransparency = 1, Position = UDim2.fromOffset(154, 78), Size = UDim2.new(1, -170, 1, -132)})
-local footer = text(panel, "", 10, UDim2.new(0, 20, 1, -43), UDim2.new(1, -40, 0, 31), C.muted)
+local footer = text(panel, "", 11, UDim2.new(0, 20, 1, -43), UDim2.new(1, -40, 0, 31), C.muted)
 footer.TextWrapped = true
 local navButtons, pageFrames, updaters = {}, {}, {}
+local capture = nil
 local order = 0
 local function page(name, caption)
     local navButton = button(nav, caption)
-    navButton.Size = UDim2.new(1, 0, 0, 30)
+    navButton.Size = UDim2.new(1, 0, 0, 39)
     navButton.TextXAlignment = Enum.TextXAlignment.Center
     navButtons[name] = navButton
     local frame = make("ScrollingFrame", pages, {Name = name, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
@@ -105,6 +106,8 @@ local function page(name, caption)
     make("UIPadding", frame, {PaddingRight = UDim.new(0, 7), PaddingBottom = UDim.new(0, 8)})
     pageFrames[name] = frame
     connections[#connections + 1] = navButton.Activated:Connect(function()
+        capture = nil
+        refreshUI()
         for k, f in pairs(pageFrames) do
             f.Visible = k == name
             navButtons[k].BackgroundColor3 = k == name and C.purple or C.surface
@@ -120,19 +123,25 @@ local extrasPage = page("Extras", "✦  EXTRAS")
 local bindPage = page("Bindings", "⌘  BINDS")
 local function card(parent, title, subtitle, height)
     order = order + 1
-    local frame = make("Frame", parent, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, height or 56), BackgroundColor3 = C.panel, BorderSizePixel = 0})
+    local frame = make("Frame", parent, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, height or 62), BackgroundColor3 = C.panel, BorderSizePixel = 0})
     round(frame, 9); outline(frame, C.edge, 0.45)
-    text(frame, title, 13, UDim2.fromOffset(13, 8), UDim2.new(1, -165, 0, 19), C.text, Enum.Font.GothamSemibold)
-    text(frame, subtitle, 10, UDim2.fromOffset(13, 29), UDim2.new(1, -165, 0, 16), C.muted)
+    text(frame, title, 14, UDim2.fromOffset(14, 10), UDim2.new(1, -165, 0, 19), C.text, Enum.Font.GothamSemibold)
+    text(frame, subtitle, 11, UDim2.fromOffset(14, 32), UDim2.new(1, -165, 0, 16), C.muted)
     return frame
+end
+local function section(parent, title, description)
+    order = order + 1
+    local area = make("Frame", parent, {LayoutOrder = order, Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1})
+    text(area, title, 17, UDim2.fromOffset(2, 0), UDim2.new(1, -4, 0, 22), C.text, Enum.Font.GothamBold)
+    text(area, description, 11, UDim2.fromOffset(2, 25), UDim2.new(1, -4, 0, 16), C.muted)
 end
 local function toggle(parent, name, description, getter, action)
     local frame = card(parent, name, description)
     local b = button(frame, "")
-    b.Size = UDim2.fromOffset(68, 30); b.Position = UDim2.new(1, -80, 0.5, -15)
+    b.Size = UDim2.fromOffset(72, 34); b.Position = UDim2.new(1, -84, 0.5, -17)
     local function update()
         local on = getter()
-        b.Text = on and "ON" or "OFF"
+        b.Text = on and "●  ON" or "○  OFF"
         b.BackgroundColor3 = on and Color3.fromRGB(41, 103, 97) or C.surface
         b.TextColor3 = on and C.accent or C.muted
     end
@@ -157,11 +166,11 @@ local function slider(parent, name, description, key, minimum, maximum, step, fo
     local frame = card(parent, name, description, 74)
     local value = text(frame, "", 12, UDim2.new(1, -103, 0, 9), UDim2.fromOffset(90, 20), C.accent, Enum.Font.GothamBold)
     value.TextXAlignment = Enum.TextXAlignment.Right
-    local track = make("TextButton", frame, {Text = "", AutoButtonColor = false, Position = UDim2.new(0, 14, 1, -18),
-        Size = UDim2.new(1, -28, 0, 6), BackgroundColor3 = C.surface, BorderSizePixel = 0})
-    round(track, 3)
+    local track = make("TextButton", frame, {Text = "", AutoButtonColor = false, Position = UDim2.new(0, 14, 1, -25),
+        Size = UDim2.new(1, -28, 0, 14), BackgroundColor3 = C.surface, BorderSizePixel = 0})
+    round(track, 7)
     local fill = make("Frame", track, {BackgroundColor3 = C.accent, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1)})
-    round(fill, 3)
+    round(fill, 7)
     local function update()
         value.Text = string.format(format, settings[key])
         fill.Size = UDim2.fromScale((settings[key] - minimum) / (maximum - minimum), 1)
@@ -191,12 +200,11 @@ local actions = {ESP = toggleESP, Aimbot = toggleAim, Noclip = toggleNoclip,
     Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck,
     Speed = toggleSpeed, AirJump = toggleAirJump, Spoof = toggleSpoof, Signal = toggleSignal,
     TriggerBot = toggleTrigger, AutoJump = toggleAutoJump, Crosshair = toggleCrosshair, Bright = toggleBright, Fog = toggleFog, CameraFov = toggleCameraFov}
-local capture = nil
 local function bindName(key)
     return binds[key] and binds[key].Name or "Unbound"
 end
-local function bindRow(name, description, key)
-    local frame = card(bindPage, name, description)
+local function bindRow(name, description, key, parent)
+    local frame = card(parent or bindPage, name, description)
     local b = button(frame, "")
     b.Size = UDim2.fromOffset(128, 30); b.Position = UDim2.new(1, -140, 0.5, -15)
     table.insert(updaters, function() b.Text = capture == key and "Press key..." or bindName(key) end)
@@ -206,7 +214,10 @@ local function bindRow(name, description, key)
     end)
 end
 -- Local declaration is before all handlers which change activation state.
-toggle(aimPage, "Aimbot", "Enable camera targeting", function() return settings.Aimbot end, toggleAim)
+section(aimPage, "Aim", "Set activation key, then close the menu to use it")
+toggle(aimPage, "Aimbot", "Master switch: must be ON", function() return settings.Aimbot end, toggleAim)
+bindRow("Aim activation key", "Hold / press after closing menu", "Trigger", aimPage)
+choice(aimPage, "Activation", "Hold = keep pressed; Toggle = press once", "AimMode", {"Hold", "Toggle"})
 toggle(aimPage, "Silent aim", "Experimental: Mouse.Hit / Target", function() return settings.SilentAim end, toggleSilentAim)
 toggle(aimPage, "Team check", "Exclude your own team", function() return settings.TeamCheck end, function() flip("TeamCheck") end)
 toggle(aimPage, "Wall check", "Require a clear line of sight", function() return settings.WallCheck end, toggleWallCheck)
@@ -215,12 +226,12 @@ toggle(aimPage, "FOV circle", "Show targeting radius", function() return setting
 choice(aimPage, "Aim part", "Target character body part", "AimPart", {"Head", "HumanoidRootPart", "UpperTorso", "Torso"})
 choice(aimPage, "Target priority", "Screen / distance / health", "AimPriority", {"Screen", "Distance", "Health"})
 slider(aimPage, "Aim height offset", "Vertical offset in studs", "AimVerticalOffset", -5, 5, 0.1, "%.1f studs")
-choice(aimPage, "Activation", "Hold or press to toggle", "AimMode", {"Hold", "Toggle"})
 slider(aimPage, "FOV radius", "Screen pixels from centre", "AimRadius", 30, 600, 5, "%.0f px")
 slider(aimPage, "Response", "Lower is smoother; 1 is instant", "Smoothness", 0.01, 1, 0.01, "%.2f")
 slider(aimPage, "Max distance", "From camera, in studs", "MaxDistance", 25, 3000, 25, "%.0f studs")
 slider(aimPage, "Prediction", "Velocity offset in seconds", "Prediction", 0, 0.5, 0.01, "%.2f s")
 -- ESP controls are independent from aim filters.
+section(espPage, "Player ESP", "Filters and performance")
 local teamCard = card(espPage, "Your team", "Updates while the menu is open")
 local teamValue = text(teamCard, "", 12, UDim2.new(1,-160,0,10), UDim2.fromOffset(148,30), C.accent, Enum.Font.GothamBold)
 teamValue.TextXAlignment = Enum.TextXAlignment.Right; teamValue.TextScaled = true
@@ -243,7 +254,9 @@ toggle(espPage, "Neutral / unknown", "Includes missing team info", function() re
 toggle(espPage, "Alive only", "Hide dead characters", function() return settings.ESPAliveOnly end, function() espFlip("ESPAliveOnly") end)
 toggle(espPage, "Visible only", "Ray visibility check for all ESP", function() return settings.ESPVisibleOnly end, function() espFlip("ESPVisibleOnly") end)
 slider(espPage, "ESP distance", "Maximum distance from camera", "ESPMaxDistance", 25, 3000, 25, "%.0f studs")
-slider(espPage, "Update interval", "Lower = smoother, more CPU", "ESPRefresh", 0.05, 1, 0.05, "%.2f s")
+slider(espPage, "Scan interval", "Filters, labels, model bounds", "ESPRefresh", 0.05, 1, 0.05, "%.2f s")
+slider(espPage, "2D refresh cap", "Lower reduces overlay workload", "ESPFrameRate", 15, 120, 15, "%.0f FPS")
+section(espStylePage, "ESP appearance", "Choose how players are displayed")
 choice(espStylePage, "Highlight style", "Character outline / fill", "ESPHighlight", {"Both", "Outline", "Fill", "Off"})
 choice(espStylePage, "Highlight depth", "Applies only to highlight", "ESPDepth", {"Always", "Occluded"})
 choice(espStylePage, "Outline color", "Highlight outline color", "ESPOutlineColor", {"White", "Same", "Black"})
@@ -253,6 +266,7 @@ choice(espStylePage, "Color mode", "Relation / team / health / rainbow", "ESPCol
 slider(espStylePage, "Ally hue", "Relation color: hue", "ESPAllyHue", 0, 360, 5, "%.0f°")
 slider(espStylePage, "Enemy hue", "Relation color: hue", "ESPEnemyHue", 0, 360, 5, "%.0f°")
 slider(espStylePage, "Neutral hue", "Relation color: hue", "ESPNeutralHue", 0, 360, 5, "%.0f°")
+section(espStylePage, "2D overlay", "Boxes, tracers and labels")
 choice(espStylePage, "Box style", "2D bounding box", "ESPBoxStyle", {"Off", "Full", "Corners"})
 slider(espStylePage, "Line thickness", "Box and tracer pixels", "ESPBoxThickness", 1, 6, 1, "%.0f px")
 slider(espStylePage, "Corner length", "Fraction of box sides", "ESPCornerSize", 0.1, 0.5, 0.05, "%.2f")
@@ -270,6 +284,7 @@ slider(espStylePage, "Label size", "Text size in pixels", "ESPTextSize", 10, 24,
 slider(espStylePage, "Overlay transparency", "Box / labels / tracers", "ESPOverlayTransparency", 0, 0.9, 0.05, "%.2f")
 updateTeamChecker()
 
+section(visualPage, "Test tools", "Client-side experiments")
 toggle(visualPage, "Speed test", "Client movement experiment", Movement.isSpeed, toggleSpeed)
 choice(visualPage, "Speed mode", "WalkSpeed / CFrame / Velocity", "MovementMode", {"WalkSpeed", "CFrame", "Velocity"})
 slider(visualPage, "Speed amount", "CFrame adds; others set", "MovementSpeed", 0, 150, 1, "%.0f studs/s")
@@ -281,6 +296,7 @@ toggle(visualPage, "Watcher test", "Needs allowlisted script names", Experiments
 toggle(visualPage, "Speed read test", "Configured test PlaceId only", Bypass.isSpeedSpoof, toggleSpoof)
 slider(visualPage, "Reported WalkSpeed", "Client read test value", "BypassSpoofSpeed", 0, 100, 1, "%.0f")
 toggle(visualPage, "Signal drop test", "Exact test event and flag only", Bypass.isSignal, toggleSignal)
+section(extrasPage, "Extra features", "Optional tools and visual settings")
 toggle(extrasPage, "Auto jump", "Repeated grounded jumps", Mobility.isEnabled, toggleAutoJump)
 toggle(extrasPage, "Jump moving only", "Do not jump while stationary", function() return settings.AutoJumpMovingOnly end, function() settings.AutoJumpMovingOnly = not settings.AutoJumpMovingOnly end)
 slider(extrasPage, "Auto jump interval", "Minimum time between jumps", "AutoJumpInterval", 0.1, 1, 0.05, "%.2f s")
@@ -304,14 +320,15 @@ slider(extrasPage, "Brightness", "Local lighting override", "FullbrightLevel", 0
 toggle(extrasPage, "No fog", "Local FogEnd override", function() return settings.NoFogEnabled end, toggleFog)
 toggle(extrasPage, "Camera FOV", "Local field-of-view override", function() return settings.CameraFOVEnabled end, toggleCameraFov)
 slider(extrasPage, "Camera FOV amount", "May conflict with weapon zoom", "CameraFOVAmount", 30, 120, 1, "%.0f°")
-bindRow("Aim trigger", "Default RMB; Esc removes", "Trigger")
+section(bindPage, "Key bindings", "Select a row, then press a key; Esc clears")
+bindRow("Aim trigger", "Activation key (same as AIM page)", "Trigger")
 bindRow("Toggle auto jump", "No key until assigned", "AutoJump")
 bindRow("Toggle trigger bot", "No key until assigned", "TriggerBot")
 bindRow("Toggle crosshair", "No key until assigned", "Crosshair")
 bindRow("Toggle fullbright", "No key until assigned", "Bright")
 bindRow("Toggle no fog", "No key until assigned", "Fog")
 bindRow("Toggle camera FOV", "No key until assigned", "CameraFov")
-bindRow("Toggle aimbot", "No key until assigned", "Aimbot")
+bindRow("Toggle aimbot", "Master ON/OFF, not activation key", "Aimbot")
 bindRow("Toggle ESP", "No key until assigned", "ESP")
 bindRow("Toggle speed", "No key until assigned", "Speed")
 bindRow("Toggle air jump", "No key until assigned", "AirJump")
@@ -365,7 +382,7 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
             for key, existing in pairs(binds) do
                 if key ~= capture and existing == code then binds[key] = nil end
             end
-            binds[capture] = code; capture = nil; setStatus("Binding assigned. Duplicate binding cleared.")
+            binds[capture] = code; capture = nil; setStatus("Binding assigned. Close menu to use it. Conflicting binding cleared.")
         end
         refreshUI(); return
     end
