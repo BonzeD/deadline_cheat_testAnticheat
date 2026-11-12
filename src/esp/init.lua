@@ -70,6 +70,11 @@ local function makeEntry(player, character)
     espEntries[player] = e
     return e
 end
+local function hideEntry(e)
+    e.active = false
+    e.overlay.Visible, e.tracer.Visible = false, false
+    e.highlight.Enabled = false
+end
 local function espClear()
     local remove = {}
     for player in pairs(espEntries) do table.insert(remove, player) end
@@ -123,6 +128,9 @@ local function updateBox(e, width, height, color)
         line[i].Size = UDim2.fromOffset(coords[3],coords[4])
     end
 end
+local function has2D()
+    return settings.ESPBoxStyle ~= "Off" or settings.ESPTracer ~= "Off" or settings.ESPNames or settings.ESPTeams or settings.ESPDistance or settings.ESPHealth or settings.ESPTool or settings.ESPHealthBar
+end
 local renderElapsed = 0
 local function renderESP(camera, dt)
     if dt then
@@ -133,9 +141,9 @@ local function renderESP(camera, dt)
     end
     camera = camera or workspace.CurrentCamera
     if not settings.ESP or not camera then return end
+    local show2D = has2D()
     for player, e in pairs(espEntries) do
-        local has2D = settings.ESPBoxStyle ~= "Off" or settings.ESPTracer ~= "Off" or settings.ESPNames or settings.ESPTeams or settings.ESPDistance or settings.ESPHealth or settings.ESPTool or settings.ESPHealthBar
-        if not has2D or player.Character ~= e.character then
+        if not e.active or not show2D or player.Character ~= e.character then
             e.overlay.Visible, e.tracer.Visible = false, false
         else
             local x,y,w,h = projectedBounds(camera, e)
@@ -144,7 +152,7 @@ local function renderESP(camera, dt)
             if x then
                 e.overlay.Position = UDim2.fromOffset(x,y)
                 e.overlay.Size = UDim2.fromOffset(w,h)
-                updateBox(e,w,h,e.color)
+                if settings.ESPBoxStyle ~= "Off" then updateBox(e,w,h,e.color) end
                 local barX = settings.ESPHealthPosition == "Right" and w + 4 or -settings.ESPHealthWidth - 4
                 e.healthBack.Position, e.healthBack.Size = UDim2.fromOffset(barX,0), UDim2.fromOffset(settings.ESPHealthWidth,h)
                 if e.tracer.Visible then
@@ -163,10 +171,12 @@ local function renderESP(camera, dt)
     end
 end
 local function updateESP()
-    local active = {}
+    local active, present = {}, {}
+    local players = Players:GetPlayers()
+    for _, player in ipairs(players) do present[player] = true end
     local camera = workspace.CurrentCamera
     if settings.ESP and camera and espLayer then
-        for _, player in ipairs(Players:GetPlayers()) do
+        for _, player in ipairs(players) do
             if player ~= localPlayer then
                 local character = player.Character
                 local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -187,6 +197,7 @@ local function updateESP()
                         if e and e.character ~= character then removeESP(player); e = nil end
                         e = e or makeEntry(player, character)
                         active[player] = true
+                        e.active = true
                         local color = espColor(player, relation, humanoid)
                         local hl = e.highlight
                         hl.Enabled = settings.ESPHighlight ~= "Off"
@@ -201,7 +212,7 @@ local function updateESP()
                             item.BackgroundColor3 = color
                             item.BackgroundTransparency = settings.ESPOverlayTransparency
                         end
-                        cacheBounds(e, anchor)
+                        if has2D() then cacheBounds(e, anchor) else e.corners = nil end
                         local top, bottom = {}, {}
                         if settings.ESPNames then table.insert(top, settings.ESPNameMode == "Username" and player.Name or player.DisplayName) end
                         if settings.ESPTeams then table.insert(top, "[" .. currentTeamName(player) .. "]") end
@@ -225,8 +236,16 @@ local function updateESP()
             end
         end
     end
+    -- Keep a hidden set for this player's current character when filters or
+    -- visibility change; discard it when the player leaves or respawns.
     local stale = {}
-    for player in pairs(espEntries) do if not active[player] then table.insert(stale,player) end end
+    for player, e in pairs(espEntries) do
+        if not present[player] or player.Character ~= e.character then
+            table.insert(stale, player)
+        elseif not active[player] then
+            hideEntry(e)
+        end
+    end
     for _, player in ipairs(stale) do removeESP(player) end
     renderESP(camera)
 end
