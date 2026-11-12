@@ -173,6 +173,17 @@ input.JumpRequest:fire();assert(hum.lastState==nil)
 press(Enum.KeyCode.RightShift);settings.MovementMode='WalkSpeed';ctx.Movement.toggleSpeed();run.Heartbeat:fire(0.1);assert(hum.WalkSpeed==40)
 localPlayer.CharacterAdded:fire();assert(not ctx.Movement.isSpeed() and not ctx.Movement.isJump() and hum.WalkSpeed==16)
 
+-- UI controls must fail closed in an unconfigured place; sliders and binds remain usable.
+press(Enum.KeyCode.RightShift); assert(ctx.UI.isMenuVisible())
+local spoofControl=controlFor("Speed read test"); spoofControl.Activated:fire(); assert(not ctx.Bypass.isSpeedSpoof())
+local signalControl=controlFor("Signal drop test"); signalControl.Activated:fire(); assert(not ctx.Bypass.isSignal())
+local spoofSlider=controlFor("Reported WalkSpeed")
+spoofSlider.InputBegan:fire({UserInputType=Enum.UserInputType.MouseButton1,Position={X=50}})
+assert(settings.BypassSpoofSpeed==50)
+input.InputEnded:fire({UserInputType=Enum.UserInputType.MouseButton1})
+local spoofBind=controlFor("Toggle speed read test"); spoofBind.Activated:fire(); press(Enum.KeyCode.J);assert(spoofBind.Text=="J")
+press(Enum.KeyCode.RightShift);press(Enum.KeyCode.J); assert(not ctx.Bypass.isSpeedSpoof())
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
@@ -180,4 +191,4 @@ local good,err=pcall(assert(loadfile('./main.lua')))
 assert(not good and tostring(err):find('Cannot read') and _G.TestClientCleanup==originalCleanup)
 readfile=originalRead
 _G.TestClientCleanup(); assert(next(espEntries)==nil and ctx.espLayer.destroyed and ctx.gui.destroyed and run.render==nil)
-print('Mock runtime: movement modes, jump, restore, respawn, ESP, UI, aim and loader PASS')
+print('Mock runtime: movement, ESP, UI, bypass controls, aim and loader PASS')

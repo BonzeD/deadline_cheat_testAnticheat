@@ -3,7 +3,7 @@ return function(ctx)
 local Players, localPlayer, settings, UserInputService = ctx.Players, ctx.localPlayer, ctx.settings, ctx.UserInputService
 local connections, Aim, ESP, Experiments = ctx.connections, ctx.Aim, ctx.ESP, ctx.Experiments
 local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
-local Movement = ctx.Movement
+local Movement, Bypass = ctx.Movement, ctx.Bypass
 local aimActive = false
 local refreshUI = function() end
 local statusText = "Ready • Right Shift opens or hides the menu."
@@ -20,6 +20,8 @@ local function toggleNoclip() Experiments.toggleNoclip() end
 local function toggleWatchers() Experiments.toggleWatchers() end
 local function toggleSpeed() Movement.toggleSpeed() end
 local function toggleAirJump() Movement.toggleJump() end
+local function toggleSpoof() Bypass.toggleSpeedSpoof() end
+local function toggleSignal() Bypass.toggleSignal() end
 -- Self-contained UI. Right Shift is reserved as a recovery shortcut.
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local gui = Instance.new("ScreenGui")
@@ -163,6 +165,7 @@ local function slider(parent, name, description, key, minimum, maximum, step, fo
         local ratio = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
         local amount = math.floor(((minimum + ratio * (maximum - minimum)) - minimum) / step + 0.5)
         settings[key] = math.clamp(minimum + amount * step, minimum, maximum)
+        if key == "BypassSpoofSpeed" then Bypass.updateSpoofValue() end
         update()
     end
     connections[#connections + 1] = track.InputBegan:Connect(function(input)
@@ -179,7 +182,7 @@ local function flip(key) settings[key] = not settings[key]; Aim.reset() end
 local binds = {Menu = Enum.KeyCode.RightShift, Trigger = Enum.UserInputType.MouseButton2}
 local actions = {ESP = toggleESP, Aimbot = toggleAim, Noclip = toggleNoclip,
     Watcher = toggleWatchers, Silent = toggleSilentAim, Wall = toggleWallCheck,
-    Speed = toggleSpeed, AirJump = toggleAirJump}
+    Speed = toggleSpeed, AirJump = toggleAirJump, Spoof = toggleSpoof, Signal = toggleSignal}
 local capture = nil
 local function bindName(key)
     return binds[key] and binds[key].Name or "Unbound"
@@ -265,12 +268,17 @@ choice(visualPage, "Air jump mode", "State or vertical velocity", "AirJumpMode",
 slider(visualPage, "Jump velocity", "Only in Velocity mode", "AirJumpVelocity", 10, 150, 5, "%.0f studs/s")
 toggle(visualPage, "Noclip", "Local collision experiment", Experiments.isNoclip, toggleNoclip)
 toggle(visualPage, "Watcher test", "Needs allowlisted script names", Experiments.isWatcher, toggleWatchers)
+toggle(visualPage, "Speed read test", "Configured test PlaceId only", Bypass.isSpeedSpoof, toggleSpoof)
+slider(visualPage, "Reported WalkSpeed", "Client read test value", "BypassSpoofSpeed", 0, 100, 1, "%.0f")
+toggle(visualPage, "Signal drop test", "Exact test event and flag only", Bypass.isSignal, toggleSignal)
 bindRow("Aim trigger", "Default RMB; Esc removes", "Trigger")
 bindRow("Toggle aimbot", "No key until assigned", "Aimbot")
 bindRow("Toggle ESP", "No key until assigned", "ESP")
 bindRow("Toggle speed", "No key until assigned", "Speed")
 bindRow("Toggle air jump", "No key until assigned", "AirJump")
 bindRow("Toggle noclip", "No key until assigned", "Noclip")
+bindRow("Toggle speed read test", "No key until assigned", "Spoof")
+bindRow("Toggle signal test", "No key until assigned", "Signal")
 bindRow("Toggle watcher", "No key until assigned", "Watcher")
 bindRow("Toggle silent aim", "No key until assigned", "Silent")
 bindRow("Toggle wall check", "No key until assigned", "Wall")
@@ -338,7 +346,7 @@ connections[#connections + 1] = UserInputService.WindowFocusReleased:Connect(fun
     aimActive = false; Aim.reset(); dragging = false
 end)
 connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
-    Experiments.respawn(); Movement.respawn(); aimActive = false; Aim.reset()
+    Experiments.respawn(); Movement.respawn(); Bypass.respawn(); aimActive = false; Aim.reset()
     refreshUI()
 end)
 local function updateFOV(camera)
