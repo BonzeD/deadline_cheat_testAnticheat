@@ -14,13 +14,21 @@ function listfiles(p) return {p..'/config_default.json',p..'\\config_custom-1.js
 local s={ESP=true,ESPFrameRate=60,AimMode='Hold',SilentAim=false,TriggerEnabled=false,AutoJumpEnabled=false,BypassRemoteFlag='',BypassAllowedPlaceIds={}}
 local config=assert(loadfile('src/config/init.lua'))()({settings=s},'DeadlineTest')
 config.number('ESPFrameRate',15,120); config.choice('AimMode',{'Hold','Toggle'})
-local keys={'Trigger','ESP'};local binds={Trigger=Enum.KeyCode.Q,ESP=nil}
-config.save('default',binds,keys)
+local keys={'Trigger','ESP'};local binds={Trigger=Enum.KeyCode.Q,ESP=nil};local modes={ESP='Hold'}
+config.save('default',binds,keys,modes)
 assert(stored['DeadlineTest/config_default.json']=='json' and encoded.settings.ESP and not encoded.settings.SilentAim and not encoded.settings.BypassRemoteFlag)
-assert(encoded.binds.Trigger.name=='Q' and encoded.binds.ESP==false)
+assert(encoded.binds.Trigger.name=='Q' and encoded.binds.ESP==false and encoded.bindModes.ESP=='Hold')
 decoded=encoded;s.ESP=false;s.ESPFrameRate=30;s.AimMode='Toggle';binds.Trigger=Enum.KeyCode.K;binds.ESP=Enum.UserInputType.MouseButton3
-config.load('default',binds,keys)
+modes.ESP='Toggle';config.load('default',binds,keys,modes)
+assert(modes.ESP=='Hold')
 assert(s.ESP==true and s.ESPFrameRate==60 and s.AimMode=='Hold' and binds.Trigger==Enum.KeyCode.Q and binds.ESP==nil)
+-- Profiles from before bindModes existed stay valid and default to Toggle.
+local savedModes=decoded.bindModes;decoded.bindModes=nil;modes.ESP='Hold'
+config.load('default',binds,keys,modes);assert(modes.ESP=='Toggle');decoded.bindModes=savedModes
+-- Invalid mode rejects the entire profile without changing settings.
+decoded.bindModes.ESP='Broken';local oldRadius=s.ESPFrameRate;decoded.settings.ESPFrameRate=45
+assert(not pcall(config.load,'default',binds,keys,modes) and s.ESPFrameRate==oldRadius and modes.ESP=='Toggle')
+decoded.bindModes.ESP='Hold';decoded.settings.ESPFrameRate=60
 local names=config.list();assert(#names==2 and names[1]=='custom-1' and names[2]=='default')
 assert(not pcall(config.save,'../escape',binds,keys))
 local snapshot=s.ESPFrameRate; decoded.settings.ESPFrameRate=9999

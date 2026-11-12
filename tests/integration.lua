@@ -271,6 +271,37 @@ press(Enum.KeyCode.Q);fakeClock=100.6;assert(ctx.UI.isAimActive())
 keyDown=false;fakeClock=100.8;assert(not ctx.UI.isAimActive())
 input.IsKeyDown=nil;input.IsMouseButtonPressed=nil;os.clock=oldClock
 
+-- Full UI controls: bind mode changes, hold release, focus and config restore.
+local function modeFor(key)
+    for _,o in ipairs(createdObjects) do if o.ClassName=="TextButton" and o.Name=="BindMode_"..key then return o end end
+    error("missing mode control: "..key)
+end
+press(Enum.KeyCode.RightShift);assert(ctx.UI.isMenuVisible())
+local crossMode=modeFor("Crosshair");assert(crossMode.Text=="MODE: Toggle")
+crossMode.Activated:fire();assert(crossMode.Text=="MODE: Hold" and not settings.CrosshairEnabled)
+local crossKey=controlFor("Toggle crosshair");crossKey.Activated:fire();press(Enum.KeyCode.H)
+press(Enum.KeyCode.RightShift);local heldH=press(Enum.KeyCode.H);assert(settings.CrosshairEnabled)
+input.InputEnded:fire(heldH);assert(not settings.CrosshairEnabled)
+heldH=press(Enum.KeyCode.H);assert(settings.CrosshairEnabled)
+input.WindowFocusReleased:fire();assert(not settings.CrosshairEnabled);input.WindowFocused:fire()
+heldH=press(Enum.KeyCode.H);assert(settings.CrosshairEnabled)
+press(Enum.KeyCode.RightShift);assert(not settings.CrosshairEnabled)
+-- Both UI controls for aim activation share the same settings.AimMode.
+local triggerMode=modeFor("Trigger");local oldMode=settings.AimMode
+triggerMode.Activated:fire();assert(settings.AimMode~=oldMode)
+-- Modes persist in profile, and load does not leave held features enabled.
+local savedJSON, memoryDisk
+memoryDisk={};services.HttpService={JSONEncode=function(_,v)savedJSON=v;return 'modes-json' end,
+    JSONDecode=function(_,v)assert(v=='modes-json');return savedJSON end}
+local prevRead=readfile;readfile=function(path)return memoryDisk[path] or prevRead(path) end
+writefile=function(path,v)memoryDisk[path]=v end
+controlFor("Save profile").Activated:fire();assert(savedJSON.bindModes.Crosshair=="Hold")
+crossMode.Activated:fire();assert(crossMode.Text=="MODE: Toggle")
+controlFor("Load profile").Activated:fire();assert(crossMode.Text=="MODE: Hold" and not settings.CrosshairEnabled)
+press(Enum.KeyCode.RightShift);heldH=press(Enum.KeyCode.H);assert(settings.CrosshairEnabled)
+input.InputEnded:fire(heldH);assert(not settings.CrosshairEnabled)
+readfile=prevRead;writefile=nil
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
