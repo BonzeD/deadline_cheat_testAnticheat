@@ -233,6 +233,25 @@ press(Enum.KeyCode.RightShift);activateBind.Activated:fire();press(Enum.KeyCode.
 assert(activateBind.Text=="Unbound" and mirrorBind.Text=="Unbound")
 press(Enum.KeyCode.RightShift);press(Enum.UserInputType.MouseButton3);assert(not ctx.UI.isAimActive())
 
+-- Exercise config buttons through the real menu with mocked disk and JSON service.
+local jsonStore, disk = nil, {}
+services.HttpService={JSONEncode=function(_,data) jsonStore=data; return "profile-json" end,
+    JSONDecode=function(_,data) assert(data=="profile-json"); return jsonStore end}
+local originalReadFile=readfile
+readfile=function(path) return disk[path] or originalReadFile(path) end
+writefile=function(path,content) disk[path]=content end
+listfiles=function(root) local files={} for path in pairs(disk) do files[#files+1]=path end return files end
+press(Enum.KeyCode.RightShift);assert(ctx.UI.isMenuVisible())
+activateBind.Activated:fire();press(Enum.KeyCode.Q)
+settings.AimRadius=230; settings.ESP=false
+controlFor("Save profile").Activated:fire();assert(disk["DeadlineTest/config_default.json"]=="profile-json")
+settings.AimRadius=500;settings.ESP=true;activateBind.Activated:fire();press(Enum.KeyCode.E)
+controlFor("Load profile").Activated:fire()
+assert(settings.AimRadius==230 and settings.ESP==false and activateBind.Text=="Q")
+press(Enum.KeyCode.RightShift);settings.AimMode="Hold";local configKey=press(Enum.KeyCode.Q,true);assert(ctx.UI.isAimActive())
+input.InputEnded:fire(configKey);assert(not ctx.UI.isAimActive())
+readfile=originalReadFile;writefile=nil;listfiles=nil
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
