@@ -252,6 +252,25 @@ press(Enum.KeyCode.RightShift);settings.AimMode="Hold";local configKey=press(Enu
 input.InputEnded:fire(configKey);assert(not ctx.UI.isAimActive())
 readfile=originalReadFile;writefile=nil;listfiles=nil
 
+-- Lost release events: in Hold mode only, reconcile physical input state.
+local fakeClock, oldClock=100,os.clock;os.clock=function() return fakeClock end
+local rightDown=true
+function input:IsMouseButtonPressed(key) return rightDown end
+press(Enum.KeyCode.RightShift);activateBind.Activated:fire();press(Enum.UserInputType.MouseButton2)
+press(Enum.KeyCode.RightShift);settings.AimMode="Hold";press(Enum.UserInputType.MouseButton2)
+assert(ctx.UI.isAimActive());rightDown=false;fakeClock=100.2;assert(not ctx.UI.isAimActive())
+-- Toggle deliberately remains active after releasing the physical button.
+settings.AimMode="Toggle";rightDown=true;press(Enum.UserInputType.MouseButton2)
+rightDown=false;fakeClock=100.4;assert(ctx.UI.isAimActive())
+press(Enum.KeyCode.RightShift);assert(not ctx.UI.isAimActive())
+-- Same lost-release recovery for keyboard bindings.
+activateBind.Activated:fire();press(Enum.KeyCode.Q);press(Enum.KeyCode.RightShift)
+settings.AimMode="Hold";local keyDown=true
+function input:IsKeyDown(key) assert(key==Enum.KeyCode.Q);return keyDown end
+press(Enum.KeyCode.Q);fakeClock=100.6;assert(ctx.UI.isAimActive())
+keyDown=false;fakeClock=100.8;assert(not ctx.UI.isAimActive())
+input.IsKeyDown=nil;input.IsMouseButtonPressed=nil;os.clock=oldClock
+
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
 local originalRead=readfile;readfile=function(path) error('missing') end
