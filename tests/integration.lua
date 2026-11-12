@@ -87,20 +87,29 @@ local cf = {}; function cf:PointToWorldSpace(v) return Vector3.new(v.X,v.Y,v.Z+3
 local character={PrimaryPart=anchor}
 function character:FindFirstChildOfClass(name) if name=='Humanoid' then return hum end if name=='Tool' then return {Name='Rifle'} end end
 function character:FindFirstChild(name) if name=='HumanoidRootPart' or name=='Head' then return anchor end end
-function character:GetBoundingBox() return cf,Vector3.new(4,6,2) end
+local boundingCalls = 0
+function character:GetBoundingBox() boundingCalls=boundingCalls+1; return cf,Vector3.new(4,6,2) end
 local function makePlayer(id,team,neutral)
  return {Name='User'..id,DisplayName='Display'..id,UserId=id, Team=team, Neutral=neutral, TeamColor={Color={team=team}}, Character=character}
 end
 local ally=makePlayer(2,red,false); local enemy=makePlayer(3,blue,false); local neutral=makePlayer(4,nil,true)
 playerService.list={localPlayer,ally,enemy,neutral}
 local camera={CFrame={Position=Vector3.new(0,0,0)}, ViewportSize=Vector2.new(1000,600)}
-function camera:WorldToViewportPoint(v) return {X=500+v.X*10,Y=300-v.Y*10,Z=v.Z},true end
+function camera:WorldToViewportPoint(v) return {X=500+(self.shiftX or 0)+v.X*10,Y=300-v.Y*10,Z=v.Z},true end
 function camera:GetPartsObscuringTarget(points,ignored) return self.obstacles or {} end
 workspace.CurrentCamera=camera
 assert(ctx.ESP.relationOf(ally)=='Ally' and ctx.ESP.relationOf(enemy)=='Enemy' and ctx.ESP.relationOf(neutral)=='Neutral')
 ctx.UI.updateTeamChecker(); assert(teamValue.Text=='Red' and countValue.Text:find('A 1') and countValue.Text:find('E 1') and countValue.Text:find('N 1'))
 ctx.ESP.update(); assert(not espEntries[ally] and espEntries[enemy] and espEntries[neutral]); assert(espEntries[enemy].overlay.Visible)
 assert(espEntries[enemy].topText.Text=='Display3' and espEntries[enemy].bottomText.Text=='30 studs')
+-- 2D geometry moves with camera and root between slow scans, without another bounds query.
+local xBefore=espEntries[enemy].overlay.Position.X.Offset
+local callsBefore=boundingCalls
+camera.shiftX=40; anchor.Position=Vector3.new(2,0,30)
+ctx.ESP.render(camera, 0.001); assert(espEntries[enemy].overlay.Position.X.Offset==xBefore)
+ctx.ESP.render(camera, 0.02); assert(espEntries[enemy].overlay.Position.X.Offset==xBefore+60)
+assert(boundingCalls==callsBefore)
+camera.shiftX=0; anchor.Position=Vector3.new(0,0,30); ctx.ESP.render(camera)
 settings.ESPShowAllies=true; settings.ESPShowNeutral=false; settings.ESPTeams=true; settings.ESPHealth=true; settings.ESPTool=true
 settings.ESPBoxStyle='Full'; settings.ESPTracer='Top'; settings.ESPHighlight='Outline'; settings.ESPDepth='Occluded'
 ctx.ESP.update(); assert(espEntries[ally] and not espEntries[neutral] and espEntries[enemy])
@@ -115,7 +124,7 @@ settings.ESP=false; ctx.ESP.update(); assert(next(espEntries)==nil)
 settings.ESP=true; settings.ESPShowNeutral=true; ctx.ESP.update(); assert(espEntries[ally])
 local function press(code,processed)
  local e={UserInputType=Enum.UserInputType.Keyboard,KeyCode=code}
- if code==Enum.UserInputType.MouseButton2 then e.UserInputType=code end
+ if code==Enum.UserInputType.MouseButton1 or code==Enum.UserInputType.MouseButton2 or code==Enum.UserInputType.MouseButton3 then e.UserInputType=code end
  input.InputBegan:fire(e,processed or false); return e
 end
 assert(ctx.UI.isMenuVisible()); press(Enum.KeyCode.RightShift);assert(not ctx.UI.isMenuVisible())
@@ -201,6 +210,28 @@ assert(lighting.Brightness==4 and lighting.FogEnd==1000000 and camera.FieldOfVie
 settings.FullbrightEnabled=false;settings.NoFogEnabled=false;settings.CameraFOVEnabled=false
 ctx.Visuals.step(0.016,camera);assert(lighting.Brightness==1 and lighting.FogEnd==100 and camera.FieldOfView==70)
 assert(not ctx.Trigger.isEnabled());ctx.Trigger.toggle();assert(not ctx.Trigger.isEnabled()) -- no mouse API
+
+-- Binding the activation key is distinct from the master on/off key.
+press(Enum.KeyCode.RightShift); assert(ctx.UI.isMenuVisible())
+local activateBind=controlFor("Aim activation key")
+local mirrorBind=controlFor("Aim trigger")
+activateBind.Activated:fire(); press(Enum.KeyCode.Q)
+assert(activateBind.Text=="Q" and mirrorBind.Text=="Q")
+settings.Aimbot=true; settings.AimMode="Hold"
+press(Enum.KeyCode.RightShift); local q=press(Enum.KeyCode.Q,true); assert(ctx.UI.isAimActive())
+input.InputEnded:fire(q); assert(not ctx.UI.isAimActive())
+local oldMouse=press(Enum.UserInputType.MouseButton2); assert(not ctx.UI.isAimActive())
+settings.AimMode="Toggle"; press(Enum.KeyCode.Q); assert(ctx.UI.isAimActive())
+press(Enum.KeyCode.Q); assert(not ctx.UI.isAimActive())
+-- Mouse rebind works too; Escape clears, and focus loss deactivates.
+press(Enum.KeyCode.RightShift); activateBind.Activated:fire(); press(Enum.UserInputType.MouseButton3)
+assert(activateBind.Text=="MouseButton3" and mirrorBind.Text=="MouseButton3")
+press(Enum.KeyCode.RightShift); settings.AimMode="Hold"
+local mb3=press(Enum.UserInputType.MouseButton3,true); assert(ctx.UI.isAimActive())
+input.WindowFocusReleased:fire();assert(not ctx.UI.isAimActive());input.WindowFocused:fire()
+press(Enum.KeyCode.RightShift);activateBind.Activated:fire();press(Enum.KeyCode.Escape)
+assert(activateBind.Text=="Unbound" and mirrorBind.Text=="Unbound")
+press(Enum.KeyCode.RightShift);press(Enum.UserInputType.MouseButton3);assert(not ctx.UI.isAimActive())
 
 local originalCleanup=env and env.TestClientCleanup or _G.TestClientCleanup
 -- Failed module reads must not unload an existing client.
