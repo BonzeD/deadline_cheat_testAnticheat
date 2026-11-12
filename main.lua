@@ -146,45 +146,196 @@ local function disableNamedWatchers(character)
         end
     end
     print("F9: disabled matching local callbacks:", count)
-    return true
+    return count > 0
 end
 
+-- Shared state for keyboard shortcuts and the menu.
+local refreshUI = function() end
+local statusText = "Ready. Right Shift opens or hides the menu."
+local function setStatus(message)
+    statusText = message
+    refreshUI()
+end
+local function toggleESP()
+    settings.ESP = not settings.ESP
+    updateESP()
+    setStatus("ESP " .. (settings.ESP and "enabled" or "disabled"))
+end
+local function toggleAim()
+    settings.Aimbot = not settings.Aimbot
+    setStatus("Aim " .. (settings.Aimbot and "enabled" or "disabled"))
+end
+local function toggleNoclip()
+    noclip = not noclip
+    if not noclip then restoreCollision() end
+    setStatus("Noclip " .. (noclip and "enabled" or "disabled"))
+end
+local function toggleWatchers()
+    if watcherTest then
+        watcherTest = false
+        restoreWatchers()
+        setStatus("Local watcher test disabled; connections restored.")
+    else
+        watcherTest = disableNamedWatchers(localPlayer.Character)
+        if watcherTest then
+            setStatus("Matching local watchers disabled. Server checks are unaffected.")
+        elseif #settings.WatcherScriptNames == 0 then
+            setStatus("Watcher test needs names in WatcherScriptNames.")
+        elseif type(getconnections) ~= "function" then
+            setStatus("Watcher test unavailable: getconnections is missing.")
+        else
+            setStatus("No matching accessible watchers found. See console.")
+        end
+    end
+end
+
+-- PlayerGui is used rather than loading an external UI library.
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+local gui = Instance.new("ScreenGui")
+gui.Name = "DeadlineTestMenu"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+local function corner(parent, radius)
+    local item = Instance.new("UICorner")
+    item.CornerRadius = UDim.new(0, radius)
+    item.Parent = parent
+end
+local function label(parent, text, position, size, textSize, color)
+    local item = Instance.new("TextLabel")
+    item.BackgroundTransparency = 1
+    item.Position = position
+    item.Size = size
+    item.Font = Enum.Font.Gotham
+    item.Text = text
+    item.TextColor3 = color
+    item.TextSize = textSize
+    item.TextXAlignment = Enum.TextXAlignment.Left
+    item.Parent = parent
+    return item
+end
+
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Size = UDim2.fromOffset(370, 363)
+panel.Position = UDim2.new(0.5, -185, 0.5, -181)
+panel.BackgroundColor3 = Color3.fromRGB(20, 23, 32)
+panel.BorderSizePixel = 0
+panel.Parent = gui
+corner(panel, 12)
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(66, 75, 94)
+stroke.Thickness = 1
+stroke.Parent = panel
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 64)
+header.BackgroundTransparency = 1
+header.Active = true
+header.Parent = panel
+local title = label(header, "DEADLINE  /  TEST CLIENT", UDim2.fromOffset(18, 11), UDim2.new(1, -36, 0, 23), 17, Color3.fromRGB(240, 243, 250))
+title.Font = Enum.Font.GothamBold
+label(header, "RIGHT SHIFT  •  SHOW / HIDE  •  DRAG HEADER", UDim2.fromOffset(18, 36), UDim2.new(1, -36, 0, 16), 10, Color3.fromRGB(151, 162, 184))
+
+local divider = Instance.new("Frame")
+divider.Position = UDim2.fromOffset(18, 64)
+divider.Size = UDim2.new(1, -36, 0, 1)
+divider.BorderSizePixel = 0
+divider.BackgroundColor3 = Color3.fromRGB(57, 65, 80)
+divider.Parent = panel
+local rows = Instance.new("Frame")
+rows.BackgroundTransparency = 1
+rows.Position = UDim2.fromOffset(18, 78)
+rows.Size = UDim2.new(1, -36, 0, 192)
+rows.Parent = panel
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = rows
+
+local buttons = {}
+local function addToggle(name, shortcut, description, order, action)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.LayoutOrder = order
+    button.Size = UDim2.new(1, 0, 0, 42)
+    button.BackgroundColor3 = Color3.fromRGB(30, 35, 47)
+    button.BorderSizePixel = 0
+    button.AutoButtonColor = true
+    button.Text = ""
+    button.Parent = rows
+    corner(button, 8)
+    local textName = label(button, name .. "  [" .. shortcut .. "]", UDim2.fromOffset(12, 3), UDim2.new(1, -85, 0, 20), 13, Color3.fromRGB(234, 238, 246))
+    textName.Font = Enum.Font.GothamSemibold
+    label(button, description, UDim2.fromOffset(12, 22), UDim2.new(1, -85, 0, 15), 10, Color3.fromRGB(152, 162, 183))
+    local badge = label(button, "OFF", UDim2.new(1, -63, 0.5, -10), UDim2.fromOffset(50, 20), 11, Color3.fromRGB(149, 159, 178))
+    badge.TextXAlignment = Enum.TextXAlignment.Right
+    badge.Font = Enum.Font.GothamBold
+    connections[#connections + 1] = button.Activated:Connect(action)
+    buttons[name] = badge
+end
+addToggle("ESP", "F6", "Highlight other players", 1, toggleESP)
+addToggle("Aimbot", "F7", "Hold right mouse button to aim", 2, toggleAim)
+addToggle("Noclip", "F8", "Local collision experiment", 3, toggleNoclip)
+addToggle("Watcher test", "F9", "Requires configured script names", 4, toggleWatchers)
+
+local status = label(panel, "", UDim2.fromOffset(18, 281), UDim2.new(1, -36, 0, 42), 11, Color3.fromRGB(169, 180, 201))
+status.TextWrapped = true
+status.TextYAlignment = Enum.TextYAlignment.Top
+local hint = label(panel, "Client tests only  •  Server protection is not bypassed", UDim2.fromOffset(18, 337), UDim2.new(1, -36, 0, 15), 10, Color3.fromRGB(122, 136, 159))
+
+refreshUI = function()
+    local states = {ESP = settings.ESP, Aimbot = settings.Aimbot, Noclip = noclip, ["Watcher test"] = watcherTest}
+    for name, badge in pairs(buttons) do
+        badge.Text = states[name] and "ON" or "OFF"
+        badge.TextColor3 = states[name] and Color3.fromRGB(106, 225, 177) or Color3.fromRGB(149, 159, 178)
+    end
+    status.Text = statusText
+end
+refreshUI()
+
+-- Drag with the mouse; do not intercept button clicks.
+local dragging, dragStart, startPosition = false, nil, nil
+connections[#connections + 1] = header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging, dragStart, startPosition = true, input.Position, panel.Position
+    end
+end)
+connections[#connections + 1] = UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        panel.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+    end
+end)
+connections[#connections + 1] = UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
 connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
     restoreCollision()
     restoreWatchers()
     if watcherTest then
         watcherTest = false
-        warn("F9 disabled on respawn; enable again after character loads")
+        setStatus("Watcher test reset on respawn. Enable it again if needed.")
     end
+    refreshUI()
 end)
-
 connections[#connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.F6 then
-        settings.ESP = not settings.ESP
-        updateESP()
-        print("ESP:", settings.ESP)
-    elseif input.KeyCode == Enum.KeyCode.F7 then
-        settings.Aimbot = not settings.Aimbot
-        print("Aimbot:", settings.Aimbot)
-    elseif input.KeyCode == Enum.KeyCode.F8 then
-        noclip = not noclip
-        if not noclip then restoreCollision() end
-        print("Noclip:", noclip)
-    elseif input.KeyCode == Enum.KeyCode.F9 then
-        if watcherTest then
-            watcherTest = false
-            restoreWatchers()
-        else
-            watcherTest = disableNamedWatchers(localPlayer.Character)
-        end
-        print("Targeted watcher test:", watcherTest)
+    if UserInputService:GetFocusedTextBox() then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        gui.Enabled = not gui.Enabled
+        return
     end
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.F6 then toggleESP()
+    elseif input.KeyCode == Enum.KeyCode.F7 then toggleAim()
+    elseif input.KeyCode == Enum.KeyCode.F8 then toggleNoclip()
+    elseif input.KeyCode == Enum.KeyCode.F9 then toggleWatchers() end
 end)
 
 connections[#connections + 1] = RunService.Stepped:Connect(stepNoclip)
 RunService:BindToRenderStep("TestClientAimbot", Enum.RenderPriority.Camera.Value + 1, function()
-    if not running or not settings.Aimbot then return end
+    if not running or not settings.Aimbot or gui.Enabled then return end
     if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
     local camera = workspace.CurrentCamera
     if not camera then return end
@@ -210,9 +361,10 @@ env.TestClientCleanup = function()
     restoreCollision()
     restoreWatchers()
     for _, highlight in pairs(highlights) do highlight:Destroy() end
+    gui:Destroy()
     env.TestClientCleanup = nil
     print("Test client stopped")
 end
 
-print("Loaded: F6 ESP | F7 aim | F8 noclip | F9 targeted watcher test | hold RMB to aim")
+print("Loaded: Right Shift menu | F6 ESP | F7 aim | F8 noclip | F9 watcher test | hold RMB to aim")
 print("Stop: getgenv().TestClientCleanup()")
