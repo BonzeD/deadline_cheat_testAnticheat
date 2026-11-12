@@ -26,8 +26,6 @@ end
 
 -- Options inspired by Exunys/Aimbot-V3; implementation written for this test client.
 local lockedPlayer = nil
--- Last actual selection attempt, retained when the menu is opened to inspect it.
-local lastDiagnostic = "No attempt yet"
 local function candidateFor(camera, player)
     if not isTarget(player) then return nil end
     local part = player.Character:FindFirstChild(settings.AimPart)
@@ -117,13 +115,10 @@ end
 local function step(dt, aimActive, menuVisible, focused)
     if silentState then silentState.active = false; silentState.target = nil end
     local camera = workspace.CurrentCamera
-    if not ctx.running or not settings.Aimbot or menuVisible or focused or not aimActive then
+    if not ctx.running or not settings.Aimbot or menuVisible or focused or not aimActive or not camera then
         reset(); return
     end
-    if not camera then lastDiagnostic = "Camera unavailable"; reset(); return end
     local part = findTarget(camera)
-    lastDiagnostic = part and ("Target: " .. tostring(lockedPlayer and lockedPlayer.Name or "unknown"))
-        or "No eligible target (check filters, FOV and distance)"
     if part then
         local position = part.Position + part.AssemblyLinearVelocity * settings.Prediction + Vector3.new(0, settings.AimVerticalOffset, 0)
         if settings.SilentAim and silentState then
@@ -136,6 +131,5 @@ local function step(dt, aimActive, menuVisible, focused)
     end
 end
 return {toggle = toggle, toggleSilent = toggleSilent, toggleWall = toggleWall, reset = reset, step = step,
-    diagnostic = function() return lastDiagnostic end,
     cleanup = function() if silentState then silentState.active = false; silentState.target = nil end end}
 end
