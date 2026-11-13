@@ -1,15 +1,22 @@
 -- Deadline Research Client: local module loader, for authorized testing only.
--- Install the folder as DeadlineTest in the executor workspace; see README.md.
+-- Local files by default; the HTTP bootstrap passes a module base URL.
+local moduleBase = ...
+if moduleBase ~= nil and type(moduleBase) ~= "string" then error("Invalid module base") end
 local env = getgenv and getgenv() or _G
 local root = env.DeadlineRoot or "DeadlineTest"
 if type(root) ~= "string" or root == "" then error("DeadlineRoot must be a non-empty folder name") end
-if type(readfile) ~= "function" then error("Deadline loader needs readfile; see README.md") end
+if not moduleBase and type(readfile) ~= "function" then error("Deadline local loader needs readfile; see README.md") end
 if type(loadstring) ~= "function" then error("Deadline loader needs loadstring") end
 
 local function loadModule(path)
-    local fullPath = root .. "/" .. path
-    local ok, source = pcall(readfile, fullPath)
-    if not ok or type(source) ~= "string" then error("Cannot read " .. fullPath .. "; install the full folder in the executor workspace") end
+    local fullPath = moduleBase and (moduleBase .. path) or (root .. "/" .. path)
+    local ok, source
+    if moduleBase then
+        ok, source = pcall(function() return game:HttpGet(fullPath) end)
+    else
+        ok, source = pcall(readfile, fullPath)
+    end
+    if not ok or type(source) ~= "string" or source == "" then error("Cannot read " .. fullPath .. "; check connection or local installation") end
     local chunk, compileError = loadstring(source, "@" .. fullPath)
     if not chunk then error("Cannot compile " .. fullPath .. ": " .. tostring(compileError)) end
     local loaded, result = pcall(chunk)
