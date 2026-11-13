@@ -5,6 +5,9 @@ local connections, Aim, ESP, Experiments = ctx.connections, ctx.Aim, ctx.ESP, ct
 local relationOf, currentTeamName = ESP.relationOf, ESP.currentTeamName
 local Movement, Bypass, Trigger, Visuals, Mobility = ctx.Movement, ctx.Bypass, ctx.Trigger, ctx.Visuals, ctx.Mobility
 local Config, Cursor = ctx.Config, ctx.Cursor
+local translate = ctx.translate
+local staticLabels = {}
+local function tr(value) return translate(settings.Language, value) end
 local aimActive, windowFocused = false, true
 local aimPressedAt = 0
 local refreshUI = function() end
@@ -12,8 +15,10 @@ local statusText = "Ready • Right Shift opens or hides the menu."
 local function setStatus(message) statusText = message; refreshUI() end
 ctx.setStatus = setStatus
 local function toggleESP()
-    settings.ESP = not settings.ESP; ESP.update()
-    setStatus("ESP " .. (settings.ESP and "enabled" or "disabled"))
+    settings.ESP = not settings.ESP
+    if not settings.ESP then ESP.clear() end
+    local ok, err = pcall(ESP.update)
+    setStatus(ok and ("ESP " .. (settings.ESP and "enabled" or "disabled")) or ("ESP update failed: " .. tostring(err)))
 end
 local function toggleAim() aimActive = false; Aim.toggle() end
 local function toggleSilentAim() Aim.toggleSilent() end
@@ -81,14 +86,17 @@ local function outline(parent, color, transparency)
     make("UIStroke", parent, {Color = color or C.edge, Transparency = transparency or 0, Thickness = 1})
 end
 local function text(parent, value, size, position, bounds, color, font)
-    return make("TextLabel", parent, {BackgroundTransparency = 1, Text = value, TextSize = size,
+    local label = make("TextLabel", parent, {BackgroundTransparency = 1, Text = value, TextSize = size,
         Position = position, Size = bounds, TextColor3 = color or C.text, Font = font or Enum.Font.Gotham,
         TextXAlignment = Enum.TextXAlignment.Left})
+    if value ~= "" then table.insert(staticLabels, {label,value}) end
+    return label
 end
 local function button(parent, value)
     local b = make("TextButton", parent, {Text = value, TextSize = 12, Font = Enum.Font.GothamSemibold,
         TextColor3 = C.text, BackgroundColor3 = C.surface, BorderSizePixel = 0, AutoButtonColor = true})
     round(b, 8)
+    if value ~= "" then table.insert(staticLabels, {b,value}) end
     return b
 end
 local fov = make("Frame", gui, {Name = "AimFOV", AnchorPoint = Vector2.new(0.5, 0.5),
@@ -185,7 +193,7 @@ local function toggle(parent, name, description, getter, action)
     b.Size = UDim2.fromOffset(72, 34); b.Position = UDim2.new(1, -84, 0.5, -17)
     local function update()
         local on = getter()
-        b.Text = on and "●  ON" or "○  OFF"
+        b.Text = tr(on and "●  ON" or "○  OFF")
         b.BackgroundColor3 = on and Color3.fromRGB(0, 65, 190) or C.surface
         b.TextColor3 = on and C.accent or C.muted
     end
@@ -197,7 +205,7 @@ local function choice(parent, name, description, key, options)
     local frame = card(parent, name, description)
     local b = button(frame, "")
     b.Size = UDim2.fromOffset(120, 30); b.Position = UDim2.new(1, -128, 0.5, -15)
-    table.insert(updaters, function() b.Text = tostring(settings[key]) .. "  ›" end)
+    table.insert(updaters, function() b.Text = tr(tostring(settings[key])) .. "  ›" end)
     connections[#connections + 1] = b.Activated:Connect(function()
         local index = table.find(options, settings[key]) or 0
         settings[key] = options[index % #options + 1]
@@ -270,8 +278,8 @@ local function bindRow(name, description, key, parent)
     modeButton.Name = "BindMode_" .. key
     modeButton.Size = UDim2.new(0.5,-10,0,28); modeButton.Position = UDim2.new(0.5,4,1,-34)
     table.insert(updaters, function()
-        b.Text = capture == key and "Press key..." or bindName(key)
-        modeButton.Text = "MODE: " .. (key=="Trigger" and settings.AimMode or bindModes[key])
+        b.Text = capture == key and tr("Press key...") or tr(bindName(key))
+        modeButton.Text = tr("MODE: ") .. tr(key=="Trigger" and settings.AimMode or bindModes[key])
     end)
     connections[#connections + 1] = b.Activated:Connect(function()
         capture = key; aimActive = false
@@ -319,7 +327,7 @@ local function updateTeamChecker()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer then local group = relationOf(player); counts[group] = counts[group] + 1 end
     end
-    teamValue.Text = currentTeamName(localPlayer)
+    teamValue.Text = tr(currentTeamName(localPlayer))
     countValue.Text = string.format("A %d  ·  E %d  ·  N %d", counts.Ally, counts.Enemy, counts.Neutral)
 end
 local function espFlip(key) settings[key] = not settings[key] end
@@ -346,6 +354,8 @@ slider(espStylePage, "Ally hue", "Relation color: hue", "ESPAllyHue", 0, 360, 5,
 slider(espStylePage, "Enemy hue", "Relation color: hue", "ESPEnemyHue", 0, 360, 5, "%.0f°")
 slider(espStylePage, "Neutral hue", "Relation color: hue", "ESPNeutralHue", 0, 360, 5, "%.0f°")
 section(espStylePage, "2D overlay", "Boxes, tracers and labels")
+toggle(espStylePage, "Skeleton", "Approximate R6 / R15 bones", function() return settings.ESPSkeleton end, function() espFlip("ESPSkeleton") end)
+slider(espStylePage, "Skeleton thickness", "Line width in pixels", "ESPSkeletonThickness", 1, 6, 1, "%.0f px")
 choice(espStylePage, "Box style", "2D bounding box", "ESPBoxStyle", {"Off", "Full", "Corners"})
 slider(espStylePage, "Line thickness", "Box and tracer pixels", "ESPBoxThickness", 1, 6, 1, "%.0f px")
 slider(espStylePage, "Corner length", "Fraction of box sides", "ESPCornerSize", 0.1, 0.5, 0.05, "%.2f")
@@ -425,6 +435,8 @@ bindRow("Toggle watcher", "No key until assigned", "Watcher")
 bindRow("Toggle silent aim", "No key until assigned", "Silent")
 bindRow("Toggle wall check", "No key until assigned", "Wall")
 local info = card(bindPage, "Menu: Right Shift", "Reserved so the menu can always reopen")
+section(configPage, "Interface language", "Choose interface language")
+choice(configPage, "Language", "English / Українська", "Language", {"English", "Ukrainian"})
 section(configPage, "Profiles", "Save and load local settings + key bindings")
 local configNameCard = card(configPage, "Profile name", "Letters, numbers, _ or -", 68)
 local configName = make("TextBox", configNameCard, {Name="ConfigName", Text="default", PlaceholderText="Profile name",
@@ -436,8 +448,8 @@ for key in pairs(actions) do bindingKeys[#bindingKeys+1]=key end
 table.sort(bindingKeys)
 section(configPage, "Saved profiles", "Files in workspace")
 local listCard=card(configPage, "Saved profiles", "Refresh to see local files", 88)
-local listText=text(listCard, "Not loaded", 11, UDim2.fromOffset(14,49), UDim2.new(1,-28,0,28), C.accent)
-listText.TextWrapped=true
+local listText=text(listCard, "", 11, UDim2.fromOffset(14,49), UDim2.new(1,-28,0,28), C.accent)
+listText.TextWrapped=true; listText.Text=tr("Not loaded")
 local function refreshConfigList()
     local names,reason=Config.list()
     listText.Text=names and (#names>0 and table.concat(names, "  •  ") or "No saved profiles") or reason
@@ -466,8 +478,10 @@ configAction("Refresh profiles", "Requires listfiles support", "REFRESH", refres
 refreshConfigList()
 
 refreshUI = function()
+    for _, item in ipairs(staticLabels) do item[1].Text = tr(item[2]) end
     for _, update in ipairs(updaters) do update() end
-    footer.Text = statusText
+    configName.PlaceholderText = tr("Profile name")
+    footer.Text = tr(statusText)
 end
 pageFrames.Aim.Visible = true; navButtons.Aim.BackgroundColor3 = C.purple
 Cursor.setOpen(true)

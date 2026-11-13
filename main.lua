@@ -34,6 +34,7 @@ local visualSettings = loadModule("src/visuals/settings.lua")
 local mobilitySettings = loadModule("src/mobility/settings.lua")
 local makeAim = loadModule("src/aim/init.lua")
 local makeESP = loadModule("src/esp/init.lua")
+local makeSkeleton = loadModule("src/esp/skeleton.lua")
 local makeExperiments = loadModule("src/experiments/init.lua")
 local makeMovement = loadModule("src/movement/init.lua")
 local makeBypass = loadModule("src/bypass/init.lua")
@@ -41,10 +42,11 @@ local makeTrigger = loadModule("src/trigger/init.lua")
 local makeVisuals = loadModule("src/visuals/init.lua")
 local makeMobility = loadModule("src/mobility/init.lua")
 local makeUI = loadModule("src/ui/menu.lua")
+local translate = loadModule("src/ui/i18n.lua")
 local makeCursor = loadModule("src/ui/cursor.lua")
 local makeConfig = loadModule("src/config/init.lua")
 local makeBindings = loadModule("src/ui/bindings.lua")
-local settings = {}
+local settings = {Language = "English"}
 for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movementSettings, bypassSettings, triggerSettings, visualSettings, mobilitySettings}) do
     assert(type(defaults) == "table", "Invalid settings module")
     for key, value in pairs(defaults) do
@@ -54,7 +56,7 @@ for _, defaults in ipairs({aimSettings, espSettings, experimentSettings, movemen
 end
 assert(type(makeAim) == "function" and type(makeESP) == "function" and type(makeExperiments) == "function" and type(makeMovement) == "function" and type(makeBypass) == "function" and type(makeTrigger) == "function" and type(makeVisuals) == "function" and type(makeMobility) == "function" and type(makeUI) == "function" and type(makeCursor) == "function" and type(makeConfig) == "function" and type(makeBindings) == "function", "Invalid module")
 if type(env.TestClientCleanup) == "function" then pcall(env.TestClientCleanup) end
-local ctx = {env = env, settings = settings, connections = {}, running = true, makeBindings = makeBindings, setStatus = function() end}
+local ctx = {env = env, settings = settings, connections = {}, running = true, makeBindings = makeBindings, makeSkeleton = makeSkeleton, translate = translate, setStatus = function() end}
 ctx.Players = game:GetService("Players")
 ctx.RunService = game:GetService("RunService")
 ctx.UserInputService = game:GetService("UserInputService")
@@ -102,9 +104,14 @@ local ok, message = pcall(function()
         ctx.Trigger.step(os.clock(), ctx.UI.isMenuVisible(), ctx.UserInputService:GetFocusedTextBox() ~= nil, ctx.UI.isAimActive(), ctx.UI.isWindowFocused())
     end)
     task.spawn(function()
+        local espFailed, uiFailed = false, false
         while ctx.running do
-            ctx.ESP.update()
-            ctx.UI.updateTeamChecker()
+            local espOk, espErr = pcall(ctx.ESP.update)
+            if not espOk and not espFailed then warn("Deadline ESP scan: " .. tostring(espErr)) end
+            espFailed = not espOk
+            local uiOk, uiErr = pcall(ctx.UI.updateTeamChecker)
+            if not uiOk and not uiFailed then warn("Deadline team checker: " .. tostring(uiErr)) end
+            uiFailed = not uiOk
             task.wait(ctx.settings.ESPRefresh)
         end
     end)
