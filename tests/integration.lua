@@ -84,6 +84,8 @@ else
     ctx=assert(loadfile('./main.lua'))()
 end
 local settings = ctx.settings
+assert(not settings.ESP and not settings.Aimbot, "Features must start disabled")
+settings.ESP=true
 local function upvalue(fn, name)
     for i=1,100 do local k,v=debug.getupvalue(fn,i);if not k then break end;if k==name then return v end end
     error('upvalue missing: '..name)
@@ -170,6 +172,14 @@ local function controlFor(title)
     error("missing control: "..title)
 end
 press(Enum.KeyCode.RightShift); assert(ctx.UI.isMenuVisible())
+local espControl=controlFor("ESP")
+for i=1,3 do
+    espControl.Activated:fire(); assert(not settings.ESP and not espEntries[ally])
+    espControl.Activated:fire(); assert(settings.ESP and espEntries[ally] and espEntries[ally].active)
+end
+local languageControl=controlFor("Language");languageControl.Activated:fire()
+assert(settings.Language=="Ukrainian" and languageControl.Text:find("Українська"))
+assert(controlFor("Скелет"));languageControl.Activated:fire();assert(settings.Language=="English")
 local espBind=controlFor("Toggle ESP"); espBind.Activated:fire(); press(Enum.KeyCode.K); assert(espBind.Text=="K")
 local aimBind=controlFor("Toggle aimbot"); aimBind.Activated:fire(); press(Enum.KeyCode.K);assert(espBind.Text=="Unbound" and aimBind.Text=="K")
 local speedControl=controlFor("Speed mode");speedControl.Activated:fire();assert(settings.MovementMode=="CFrame")

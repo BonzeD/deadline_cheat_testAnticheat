@@ -18,7 +18,7 @@ local localPlayer={Team='A'}; local function target(id,x,z,h)
 end
 local a,pa=target('screen',1,100,100);local b,pb=target('near',5,20,50);local c,pc=target('weak',10,80,10)
 local players={GetPlayers=function()return {localPlayer,a,b,c}end}
-local settings=assert(loadfile('src/aim/settings.lua'))();settings.WallCheck=false;settings.Smoothness=1
+local settings=assert(loadfile('src/aim/settings.lua'))();settings.Aimbot=true;settings.WallCheck=false;settings.Smoothness=1
 local cframe={Position=Vector3.new(0,0,0)};function cframe:Lerp(target,alpha)self.target=target;return self end
 local cam={CFrame=cframe,ViewportSize=Vector2.new(1000,600)}
 function cam:WorldToViewportPoint(p)return {X=500+p.X,Y=300,Z=p.Z},true end

@@ -9,8 +9,10 @@ local settings=assert(loadfile('src/visuals/settings.lua'))();local ctx={setting
 local v=assert(loadfile('src/visuals/init.lua'))()(ctx);local cam={FieldOfView=70}
 assert(not settings.CrosshairEnabled);v.toggle('CrosshairEnabled','Cross');settings.CrosshairShape='Cross+Dot';settings.CrosshairSpin=true
 settings.FullbrightEnabled=true;settings.NoFogEnabled=true;settings.CameraFOVEnabled=true
-v.step(.1,cam); assert(created[2].Visible and created[2].Rotation==9 and created[7].Visible)
+v.step(.1,cam); assert(created[2].Visible and created[3].Rotation==9 and created[3].Position.Y~=0 and created[7].Visible)
 assert(lighting.Brightness==4 and lighting.FogEnd==1000000 and cam.FieldOfView==80)
+settings.CrosshairSpin=false;v.step(.1,cam);assert(created[3].Rotation==0 and created[3].Position.Y==0)
+settings.CrosshairSpin=true
 lighting.Brightness=3;cam.FieldOfView=65;v.step(.1,cam);assert(lighting.Brightness==4 and cam.FieldOfView==80)
 settings.FullbrightEnabled=false;settings.NoFogEnabled=false;settings.CameraFOVEnabled=false;v.step(.1,cam)
 assert(lighting.Brightness==3 and lighting.FogEnd==100 and cam.FieldOfView==65 and lighting.Ambient==original)
