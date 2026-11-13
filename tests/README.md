@@ -10,4 +10,5 @@ These mocks are not Roblox Studio, Codex, physics, a graphics renderer, networki
 2. In ESP STYLE, enable Skeleton; inspect R6 and R15, on/off-screen and missing parts. Test different team and distance filters.
 3. Turn on Crosshair + Crosshair spin; change speed and shape, turn spin off. Dot alone cannot visibly rotate.
 4. Change CONFIGS → Language to Ukrainian and back; save/load a profile and check bindings.
-5. Test actual executor capabilities, game performance, camera and menu separately. Record the game, device, FPS, expected/actual behaviour and errors; do not infer that mock tests reproduce real rendering.
+5. With the menu open, hold RMB and move the camera; release RMB to operate the menu. Test first/third person, closing while held and opening/releasing during a drag.
+6. Test actual executor capabilities, game performance, camera and menu separately. Record the game, device, FPS, expected/actual behaviour and errors; do not infer that mock tests reproduce real rendering.
