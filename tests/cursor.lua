@@ -24,3 +24,18 @@ assert(input.MouseBehavior==Enum.MouseBehavior.LockCenter)
 held=true;input.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition;cursor.setOpen(true);cursor.step();cursor.setOpen(false)
 assert(input.MouseBehavior==Enum.MouseBehavior.LockCurrentPosition)
 print('Cursor mocks: released right-button lock recovery PASS')
+
+-- Explicit camera mode gives the game full control without repeatedly forcing Default.
+held=false;input.MouseBehavior=Enum.MouseBehavior.LockCenter;input.MouseIconEnabled=false
+cursor.setOpen(true);cursor.step();cursor.setCameraControl(true)
+assert(cursor.isCameraControl() and input.MouseBehavior==Enum.MouseBehavior.LockCenter and not input.MouseIconEnabled)
+input.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition;input.MouseIconEnabled=true;cursor.step()
+assert(input.MouseBehavior==Enum.MouseBehavior.LockCurrentPosition and input.MouseIconEnabled)
+cursor.setCameraControl(false);cursor.step();assert(input.MouseBehavior==Enum.MouseBehavior.Default and input.MouseIconEnabled)
+cursor.setOpen(false);assert(input.MouseBehavior==Enum.MouseBehavior.LockCurrentPosition)
+-- Closing in camera mode must not change a subsequent game write.
+input.MouseBehavior=Enum.MouseBehavior.LockCenter;input.MouseIconEnabled=false
+cursor.setOpen(true);cursor.step();cursor.setCameraControl(true)
+input.MouseBehavior=Enum.MouseBehavior.LockCurrentPosition;cursor.setOpen(false)
+assert(input.MouseBehavior==Enum.MouseBehavior.LockCurrentPosition and not cursor.isCameraControl())
+print('Cursor mocks: explicit camera mode and return PASS')

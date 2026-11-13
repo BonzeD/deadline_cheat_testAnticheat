@@ -172,6 +172,9 @@ local function controlFor(title)
     error("missing control: "..title)
 end
 press(Enum.KeyCode.RightShift); assert(ctx.UI.isMenuVisible())
+press(Enum.KeyCode.RightControl);assert(ctx.Cursor.isCameraControl())
+input.MouseBehavior=Enum.MouseBehavior.LockCenter;ctx.Cursor.step();assert(input.MouseBehavior==Enum.MouseBehavior.LockCenter)
+press(Enum.KeyCode.RightControl);assert(not ctx.Cursor.isCameraControl());ctx.Cursor.step();assert(input.MouseBehavior==Enum.MouseBehavior.Default)
 local espControl=controlFor("ESP")
 for i=1,3 do
     espControl.Activated:fire(); assert(not settings.ESP and not espEntries[ally])
