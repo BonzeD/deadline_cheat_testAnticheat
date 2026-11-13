@@ -113,6 +113,7 @@ make("UIGradient", bar, {Color = ColorSequence.new(C.accent, C.purple)})
 local header = make("Frame", panel, {Size = UDim2.new(1, 0, 0, 73), BackgroundTransparency = 1, Active = true})
 text(header, "◈  DEADLINE", 22, UDim2.fromOffset(22, 15), UDim2.fromOffset(240, 25), C.text, Enum.Font.GothamBold)
 text(header, "RESEARCH CLIENT    •    RIGHT SHIFT TO HIDE", 11, UDim2.fromOffset(24, 42), UDim2.fromOffset(320, 16), C.muted)
+text(header, "RIGHT CTRL: CAMERA / CURSOR", 11, UDim2.fromOffset(355, 42), UDim2.fromOffset(230, 16), C.muted)
 local close = button(header, "HIDE")
 close.Size = UDim2.fromOffset(64, 34); close.Position = UDim2.new(1, -82, 0, 19)
 local sidebar = make("Frame", panel, {Position = UDim2.fromOffset(16, 78), Size = UDim2.new(0, 126, 1, -132), BackgroundColor3 = C.panel, BorderSizePixel = 0})
@@ -531,6 +532,11 @@ connections[#connections + 1] = UserInputService.InputBegan:Connect(function(inp
         refreshUI(); return
     end
     if code == binds.Menu then showMenu(not panel.Visible); return end
+    if panel.Visible and code == Enum.KeyCode.RightControl then
+        Cursor.setCameraControl(not Cursor.isCameraControl())
+        setStatus(Cursor.isCameraControl() and "Camera mode: Right Ctrl returns to cursor." or "Cursor mode: Right Ctrl returns to camera.")
+        return
+    end
     if panel.Visible then return end
     if code == binds.Trigger then
         if settings.AimMode == "Toggle" then aimActive = not aimActive else aimActive = true; aimPressedAt = os.clock() end
