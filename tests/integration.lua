@@ -67,7 +67,22 @@ function readfile(path)
     if not suffix then error('invalid test path: '..path) end
     local f = assert(io.open('./'..suffix,'rb')); local content=f:read('*a');f:close();return content
 end
-local ctx = assert(loadfile('./main.lua'))()
+local ctx
+if _G.DEADLINE_TEST_REMOTE then
+    local base='https://raw.githubusercontent.com/BonzeD/deadline_cheat_testAnticheat/main/'
+    local fetched={}
+    function game:HttpGet(url)
+        assert(url:sub(1,#base)==base, 'unexpected URL')
+        local path=url:sub(#base+1); fetched[path]=true
+        local f=assert(io.open('./'..path,'rb')); local s=f:read('*a');f:close();return s
+    end
+    local made=nil;isfolder=function()return false end;makefolder=function(path)made=path end
+    ctx=assert(loadfile('./loader.lua'))()
+    assert(made=='DeadlineTest' and fetched['main.lua'] and fetched['src/esp/init.lua'] and fetched['src/ui/bindings.lua'])
+    isfolder=nil;makefolder=nil
+else
+    ctx=assert(loadfile('./main.lua'))()
+end
 local settings = ctx.settings
 local function upvalue(fn, name)
     for i=1,100 do local k,v=debug.getupvalue(fn,i);if not k then break end;if k==name then return v end end
@@ -321,5 +336,12 @@ local originalRead=readfile;readfile=function(path) error('missing') end
 local good,err=pcall(assert(loadfile('./main.lua')))
 assert(not good and tostring(err):find('Cannot read') and _G.TestClientCleanup==originalCleanup)
 readfile=originalRead
+if _G.DEADLINE_TEST_REMOTE then
+    local originalHttp=game.HttpGet
+    game.HttpGet=function() error('network unavailable') end
+    local ok,err=pcall(assert(loadfile('./main.lua')), 'https://example.invalid/')
+    assert(not ok and tostring(err):find('Cannot read') and _G.TestClientCleanup==originalCleanup)
+    game.HttpGet=originalHttp
+end
 _G.TestClientCleanup(); assert(next(espEntries)==nil and ctx.espLayer.destroyed and ctx.gui.destroyed and run.render==nil)
 print('Mock runtime: movement, ESP, UI, extras, bypass controls, aim and loader PASS')
