@@ -33,6 +33,7 @@ end
 local function removeESP(player)
     local entry = espEntries[player]
     if not entry then return end
+    if entry.skeleton then entry.skeleton.destroy() end
     if entry.highlight then entry.highlight:Destroy() end
     entry.overlay:Destroy()
     entry.tracer:Destroy()
@@ -74,6 +75,7 @@ local function hideEntry(e)
     e.active = false
     e.overlay.Visible, e.tracer.Visible = false, false
     e.highlight.Enabled = false
+    if e.skeleton then e.skeleton.hide() end
 end
 local function espClear()
     local remove = {}
@@ -143,6 +145,11 @@ local function renderESP(camera, dt)
     if not settings.ESP or not camera then return end
     local show2D = has2D()
     for player, e in pairs(espEntries) do
+        if e.skeleton then
+            if e.active and settings.ESPSkeleton and player.Character == e.character then
+                e.skeleton.render(camera,e.color,settings.ESPSkeletonThickness,settings.ESPOverlayTransparency)
+            else e.skeleton.hide() end
+        end
         if not e.active or not show2D or player.Character ~= e.character then
             e.overlay.Visible, e.tracer.Visible = false, false
         else
@@ -207,6 +214,10 @@ local function updateESP()
                         hl.OutlineTransparency = settings.ESPHighlight == "Fill" and 1 or settings.ESPOutlineTransparency
                         hl.DepthMode = settings.ESPDepth == "Occluded" and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
                         e.color = color
+                        if settings.ESPSkeleton then
+                            e.skeleton = e.skeleton or ctx.makeSkeleton(espLayer)
+                            e.skeleton.scan(character)
+                        elseif e.skeleton then e.skeleton.hide() end
                         for i, item in ipairs(e.lines) do
                             item.Visible = settings.ESPBoxStyle == "Corners" or (settings.ESPBoxStyle == "Full" and (i == 1 or i == 2 or i == 4 or i == 5))
                             item.BackgroundColor3 = color

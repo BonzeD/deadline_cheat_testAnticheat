@@ -38,10 +38,12 @@ local function step(dt, camera)
     if s.CrosshairEnabled then
         local color=Color3.fromHSV((s.CrosshairHue%360)/360,0.85,1)
         angle=s.CrosshairSpin and (angle+math.clamp(dt,0,0.1)*s.CrosshairSpinSpeed)%360 or 0
-        cross.Rotation=angle
+        cross.Rotation=0
+        local radians=math.rad(angle); local cosine,sine=math.cos(radians),math.sin(radians)
         local coords={{-(g+n/2),0,n,t},{g+n/2,0,n,t},{0,-(g+n/2),t,n},{0,g+n/2,t,n},{0,0,t*2,t*2}}
         for i,p in ipairs(lines) do
-            local a=coords[i]; p.Position=UDim2.fromOffset(a[1],a[2]);p.Size=UDim2.fromOffset(a[3],a[4])
+            local a=coords[i]; p.Position=UDim2.fromOffset(a[1]*cosine-a[2]*sine,a[1]*sine+a[2]*cosine)
+            p.Size=UDim2.fromOffset(a[3],a[4]);p.Rotation=angle
             p.Visible=(i<5 and s.CrosshairShape~="Dot") or (i==5 and s.CrosshairShape~="Cross")
             p.BackgroundColor3=color;p.BackgroundTransparency=s.CrosshairTransparency
         end
